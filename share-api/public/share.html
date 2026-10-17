@@ -52,8 +52,6 @@
     .item-name { margin: 0; font-size: 23px; line-height: 1.2; letter-spacing: -.035em; }
     .item-domain { margin: 6px 0 0; color: var(--muted); font-size: 13px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
     .body { padding: 24px 30px 26px; }
-    .notice { display: flex; gap: 11px; padding: 13px 14px; border: 1px solid #dce6ff; border-radius: 14px; color: #53627d; background: #f4f7ff; font-size: 13px; line-height: 1.55; }
-    .notice svg { flex: 0 0 18px; margin-top: 1px; color: var(--blue); }
     .section-label { margin: 25px 0 10px; color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
     .fields { overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
     .field { display: flex; align-items: center; gap: 15px; min-height: 72px; padding: 13px 14px 13px 17px; }
@@ -92,7 +90,6 @@
       :root { color-scheme: dark; --ink: #eef2fb; --muted: #a5afc2; --line: #303a50; --surface: rgba(27, 34, 51, .9); --blue-soft: #202e5b; }
       body { background: radial-gradient(circle at 12% 0%, #19284b 0, transparent 35%), #111624; }
       .card { border-color: #ffffff12; box-shadow: 0 24px 70px #0005; }
-      .notice { border-color: #314579; color: #adb9d4; background: #1c2848; }
       .fields, .icon-button, .copy-button { border-color: var(--line); background: #1d2538; }
       .item-icon { color: #b9c8ff; background: #24345f; }
       .empty-icon { background: #422b35; }
@@ -119,7 +116,6 @@
           <div class="item"><div id="itemIcon" class="item-icon" aria-hidden="true">P</div><div><h1 id="itemName" class="item-name"></h1><p id="itemDomain" class="item-domain"></p></div></div>
         </div>
         <div class="body">
-          <div class="notice"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4.5 6.2v5.5c0 4.5 3 7.7 7.5 9.3 4.5-1.6 7.5-4.8 7.5-9.3V6.2L12 3Z"/><path d="m9.1 12 2 2 4-4"/></svg><span>这是发送方创建的加密副本。查看和复制内容不会修改原始保险库。</span></div>
           <div class="section-label">登录信息</div>
           <div id="fields" class="fields"></div>
           <div class="footer"><span>请只在可信设备上查看和复制。</span><span>由 <strong>Password Entry</strong> 安全分享</span></div>
