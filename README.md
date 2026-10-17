@@ -53,7 +53,7 @@ Chrome 扩展仍需要在 `chrome://extensions` 中开启开发者模式并加�
 
 ### 分享链接 MVP
 
-分享功能的生产 API 使用 Cloudflare Workers + D1，部署说明见 [share-api/README.md](share-api/README.md)。本地开发仍可使用 `http://127.0.0.1:8787`：
+分享功能默认使用已部署的 Cloudflare Worker `https://password-entry-share.password-entry-share.workers.dev`。部署说明见 [share-api/README.md](share-api/README.md)。本地开发时可以在桌面端“设置 → 分享服务”改为 `http://127.0.0.1:8787`：
 
 ```bash
 python3 share-api/server.py

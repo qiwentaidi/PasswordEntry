@@ -45,7 +45,7 @@ private struct CreateShareResponse: Decodable {
 }
 
 public final class ShareAPIClient: @unchecked Sendable {
-    public static let defaultBaseURL = URL(string: "http://127.0.0.1:8787")!
+    public static let defaultBaseURL = URL(string: "https://password-entry-share.password-entry-share.workers.dev")!
     public let baseURL: URL
     private let session: URLSession
     private let encoder: JSONEncoder

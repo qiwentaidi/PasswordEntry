@@ -39,7 +39,7 @@ npm run db:migrate:remote
 npm run deploy
 ```
 
-Attach a custom domain to the Worker, then enter that HTTPS origin in the desktop app under “Settings → Share Service”, for example `https://share.example.com`.
+The current deployment is `https://password-entry-share.password-entry-share.workers.dev`. The desktop app uses this origin by default; you can override it under “Settings → Share Service” when using a custom domain or local server.
 
 ## Local Python fallback
 
