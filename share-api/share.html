@@ -4,69 +4,180 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
-  <title>Password Entry 分享</title>
+  <title>Password Entry · 安全分享</title>
   <style>
-    :root { color-scheme: light dark; font: 16px system-ui, sans-serif; }
-    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f4f6f8; color: #17202a; }
-    main { width: min(560px, calc(100vw - 32px)); box-sizing: border-box; padding: 28px; border-radius: 18px; background: white; box-shadow: 0 12px 36px #0001; }
-    h1 { margin-top: 0; font-size: 1.35rem; }
-    .row { display: flex; align-items: center; gap: 12px; margin: 14px 0; }
-    .label { min-width: 90px; color: #667085; }
-    .value { overflow-wrap: anywhere; font-family: ui-monospace, monospace; }
-    button { border: 0; border-radius: 8px; padding: 9px 14px; cursor: pointer; background: #1565c0; color: white; }
-    .error { color: #b42318; }
-    .muted { color: #667085; font-size: .9rem; }
-    [hidden] { display: none; }
-    @media (prefers-color-scheme: dark) { body { background: #111827; color: #f9fafb; } main { background: #1f2937; } .label, .muted { color: #98a2b3; } }
+    :root {
+      color-scheme: light;
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --ink: #172033;
+      --muted: #6d7890;
+      --line: #e4e9f2;
+      --surface: rgba(255, 255, 255, .88);
+      --blue: #3b63d8;
+      --blue-dark: #2949b8;
+      --blue-soft: #eef3ff;
+      --green: #20855a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 12% 0%, #e8efff 0, transparent 34%),
+        radial-gradient(circle at 90% 94%, #e7f5f2 0, transparent 30%),
+        #f6f8fc;
+    }
+    button { font: inherit; }
+    .page { width: min(680px, calc(100% - 32px)); margin: 0 auto; padding: 42px 0 52px; }
+    .brand { display: flex; align-items: center; gap: 12px; margin: 0 8px 26px; }
+    .brand-mark {
+      display: grid; place-items: center; width: 42px; height: 42px; border-radius: 13px;
+      color: white; background: linear-gradient(145deg, #5b7bea, #2d4fbe); box-shadow: 0 10px 22px #4265d633;
+    }
+    .brand-mark svg { width: 22px; height: 22px; }
+    .brand-name { font-size: 15px; font-weight: 750; letter-spacing: -.01em; }
+    .brand-caption { margin-top: 3px; color: var(--muted); font-size: 12px; }
+    .card {
+      overflow: hidden; border: 1px solid #fff; border-radius: 24px; background: var(--surface);
+      box-shadow: 0 24px 70px rgba(44, 61, 96, .12), 0 3px 10px rgba(44, 61, 96, .05);
+      backdrop-filter: blur(18px);
+    }
+    .card-head { padding: 28px 30px 24px; border-bottom: 1px solid var(--line); }
+    .eyebrow { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: .12em; }
+    .status { display: inline-flex; align-items: center; gap: 6px; color: var(--green); font-size: 12px; font-weight: 700; letter-spacing: 0; }
+    .status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #35b777; box-shadow: 0 0 0 4px #35b7771c; }
+    .item { display: flex; align-items: center; gap: 15px; margin-top: 20px; }
+    .item-icon { display: grid; place-items: center; flex: 0 0 54px; width: 54px; height: 54px; border-radius: 17px; color: #3357c7; background: linear-gradient(145deg, #eef3ff, #dbe5ff); font-size: 22px; font-weight: 800; }
+    .item-name { margin: 0; font-size: 23px; line-height: 1.2; letter-spacing: -.035em; }
+    .item-domain { margin: 6px 0 0; color: var(--muted); font-size: 13px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .body { padding: 24px 30px 26px; }
+    .notice { display: flex; gap: 11px; padding: 13px 14px; border: 1px solid #dce6ff; border-radius: 14px; color: #53627d; background: #f4f7ff; font-size: 13px; line-height: 1.55; }
+    .notice svg { flex: 0 0 18px; margin-top: 1px; color: var(--blue); }
+    .section-label { margin: 25px 0 10px; color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+    .fields { overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+    .field { display: flex; align-items: center; gap: 15px; min-height: 72px; padding: 13px 14px 13px 17px; }
+    .field + .field { border-top: 1px solid var(--line); }
+    .field-label { flex: 0 0 66px; color: var(--muted); font-size: 12px; font-weight: 650; }
+    .field-main { min-width: 0; flex: 1; }
+    .field-value { display: block; overflow: hidden; color: var(--ink); font-size: 15px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+    .field-value.secret { letter-spacing: .16em; }
+    .field-actions { display: flex; align-items: center; gap: 7px; }
+    .icon-button, .copy-button {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--line); border-radius: 9px;
+      color: #52617b; background: #fff; cursor: pointer; transition: .18s ease;
+    }
+    .icon-button { width: 34px; height: 34px; padding: 0; }
+    .copy-button { min-width: 58px; height: 34px; padding: 0 10px; font-size: 12px; font-weight: 700; }
+    .icon-button:hover, .copy-button:hover { border-color: #bdcaff; color: var(--blue); background: var(--blue-soft); }
+    .icon-button:focus-visible, .copy-button:focus-visible { outline: 3px solid #86a3ff66; outline-offset: 2px; }
+    .footer { display: flex; justify-content: space-between; gap: 16px; margin-top: 18px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .footer strong { color: #52617b; font-weight: 700; }
+    .empty { padding: 38px 30px; text-align: center; }
+    .empty-icon { display: grid; place-items: center; width: 52px; height: 52px; margin: 0 auto 14px; border-radius: 16px; color: #c45b5b; background: #fff0f0; }
+    .empty h1 { margin: 0; font-size: 20px; letter-spacing: -.02em; }
+    .empty p { margin: 9px auto 0; max-width: 410px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+    [hidden] { display: none !important; }
+    @media (max-width: 520px) {
+      .page { width: min(100% - 20px, 680px); padding: 22px 0 30px; }
+      .brand { margin: 0 5px 18px; }
+      .card-head, .body { padding-left: 19px; padding-right: 19px; }
+      .item-name { font-size: 20px; }
+      .field { gap: 9px; padding-left: 13px; }
+      .field-label { flex-basis: 52px; }
+      .footer { display: block; }
+      .footer span + span { display: block; margin-top: 5px; }
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { color-scheme: dark; --ink: #eef2fb; --muted: #a5afc2; --line: #303a50; --surface: rgba(27, 34, 51, .9); --blue-soft: #202e5b; }
+      body { background: radial-gradient(circle at 12% 0%, #19284b 0, transparent 35%), #111624; }
+      .card { border-color: #ffffff12; box-shadow: 0 24px 70px #0005; }
+      .notice { border-color: #314579; color: #adb9d4; background: #1c2848; }
+      .fields, .icon-button, .copy-button { border-color: var(--line); background: #1d2538; }
+      .item-icon { color: #b9c8ff; background: #24345f; }
+      .empty-icon { background: #422b35; }
+    }
   </style>
 </head>
 <body>
-  <main>
-    <h1>Password Entry 分享</h1>
-    <p id="status" class="muted">正在读取加密内容…</p>
-    <section id="content" hidden></section>
-    <p id="error" class="error" hidden></p>
+  <main class="page">
+    <header class="brand" aria-label="Password Entry">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M7.2 10.7V8.4a4.8 4.8 0 0 1 9.6 0v2.3"/><rect x="4.5" y="10.4" width="15" height="10.2" rx="2.6"/><path d="M12 14.2v2.7"/></svg>
+      </div>
+      <div><div class="brand-name">Password Entry</div><div class="brand-caption">安全分享凭据</div></div>
+    </header>
+
+    <section id="card" class="card" aria-live="polite">
+      <div id="loading" class="empty">
+        <div class="empty-icon" style="color:#3b63d8;background:#eef3ff" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3v4M12 17v4M4.2 4.2l2.8 2.8M17 17l2.8 2.8M3 12h4M17 12h4M4.2 19.8 7 17M17 7l2.8-2.8"/></svg></div>
+        <h1>正在读取分享内容</h1><p>正在安全地获取加密副本。</p>
+      </div>
+      <div id="content" hidden>
+        <div class="card-head">
+          <div class="eyebrow"><span>SECURE SHARE</span><span class="status">链接有效</span></div>
+          <div class="item"><div id="itemIcon" class="item-icon" aria-hidden="true">P</div><div><h1 id="itemName" class="item-name"></h1><p id="itemDomain" class="item-domain"></p></div></div>
+        </div>
+        <div class="body">
+          <div class="notice"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4.5 6.2v5.5c0 4.5 3 7.7 7.5 9.3 4.5-1.6 7.5-4.8 7.5-9.3V6.2L12 3Z"/><path d="m9.1 12 2 2 4-4"/></svg><span>这是发送方创建的加密副本。查看和复制内容不会修改原始保险库。</span></div>
+          <div class="section-label">登录信息</div>
+          <div id="fields" class="fields"></div>
+          <div class="footer"><span>请只在可信设备上查看和复制。</span><span>由 <strong>Password Entry</strong> 安全分享</span></div>
+        </div>
+      </div>
+      <div id="error" class="empty" hidden>
+        <div class="empty-icon" aria-hidden="true"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 8v5M12 17.2v.1"/><circle cx="12" cy="12" r="8.7"/></svg></div>
+        <h1 id="errorTitle">无法打开分享</h1><p id="errorMessage"></p>
+      </div>
+    </section>
   </main>
   <script>
     const $ = (id) => document.getElementById(id);
+    const icons = { copy: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>', eye: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12s3.4-5 9.5-5 9.5 5 9.5 5-3.4 5-9.5 5-9.5-5-9.5-5Z"/><circle cx="12" cy="12" r="2.3"/></svg>' };
     const decode = (value) => {
       const normalized = value.replaceAll('-', '+').replaceAll('_', '/').padEnd(Math.ceil(value.length / 4) * 4, '=');
       const bytes = atob(normalized);
       return Uint8Array.from(bytes, (character) => character.charCodeAt(0));
     };
-    const text = (label, value, copyable = false) => {
-      const row = document.createElement('div'); row.className = 'row';
-      const name = document.createElement('span'); name.className = 'label'; name.textContent = label;
-      const content = document.createElement('span'); content.className = 'value'; content.textContent = value || '—';
-      row.append(name, content);
-      if (copyable && value) {
-        const button = document.createElement('button'); button.textContent = '复制';
-        button.addEventListener('click', () => navigator.clipboard.writeText(value)); row.append(button);
+    async function copyValue(value, button) {
+      try { await navigator.clipboard.writeText(value); }
+      catch { const area = document.createElement('textarea'); area.value = value; document.body.append(area); area.select(); document.execCommand('copy'); area.remove(); }
+      const original = button.innerHTML; button.textContent = '已复制'; setTimeout(() => { button.innerHTML = original; }, 1400);
+    }
+    function field(label, value, {secret = false} = {}) {
+      const row = document.createElement('div'); row.className = 'field';
+      const name = document.createElement('span'); name.className = 'field-label'; name.textContent = label;
+      const main = document.createElement('div'); main.className = 'field-main';
+      const output = document.createElement('span'); output.className = 'field-value' + (secret ? ' secret' : ''); output.textContent = secret ? '••••••••••••' : (value || '—');
+      main.append(output);
+      const actions = document.createElement('div'); actions.className = 'field-actions';
+      if (secret) {
+        const reveal = document.createElement('button'); reveal.className = 'icon-button'; reveal.type = 'button'; reveal.title = '显示密码'; reveal.setAttribute('aria-label', '显示密码'); reveal.innerHTML = icons.eye;
+        let shown = false; reveal.addEventListener('click', () => { shown = !shown; output.textContent = shown ? value : '••••••••••••'; reveal.title = shown ? '隐藏密码' : '显示密码'; reveal.setAttribute('aria-label', reveal.title); }); actions.append(reveal);
       }
-      return row;
-    };
+      const copy = document.createElement('button'); copy.className = 'copy-button'; copy.type = 'button'; copy.innerHTML = icons.copy + '<span>复制</span>'; copy.addEventListener('click', () => copyValue(value, copy)); actions.append(copy);
+      row.append(name, main, actions); return row;
+    }
     async function load() {
       const shareId = location.pathname.split('/').filter(Boolean).pop();
       const secret = location.hash.slice(1);
       history.replaceState(null, '', location.pathname);
-      if (!shareId || !secret) throw new Error('分享链接不完整');
+      if (!shareId || !secret) throw new Error('分享链接不完整，请确认链接包含末尾的密钥。');
       const response = await fetch('/v1/shares/' + encodeURIComponent(shareId), {cache: 'no-store'});
-      if (!response.ok) throw new Error(response.status === 410 ? '分享链接已过期或已撤销' : '分享链接不存在');
+      if (!response.ok) throw new Error(response.status === 410 ? '分享链接已过期或已撤销。' : '分享链接不存在或暂时无法访问。');
       const envelope = await response.json();
       const key = await crypto.subtle.importKey('raw', decode(secret), {name: 'AES-GCM'}, false, ['decrypt']);
       const aad = new TextEncoder().encode('password-entry-share:v1:' + shareId);
       const clear = await crypto.subtle.decrypt({name: 'AES-GCM', iv: decode(envelope.iv), additionalData: aad, tagLength: 128}, key, decode(envelope.ciphertext));
       const payload = JSON.parse(new TextDecoder().decode(clear));
-      const content = $('content');
-      content.append(text('名称', payload.name));
-      content.append(text('网站', (payload.domains || []).join(', ')));
-      content.append(text('用户名', payload.username, true));
-      content.append(text('密码', payload.password, true));
-      if (payload.totp) content.append(text('TOTP 密钥', payload.totp.secret, true));
-      $('status').textContent = '以下是发送方分享的副本；原始保险库不会被修改。';
-      content.hidden = false;
+      $('itemIcon').textContent = (payload.name || 'P').trim().slice(0, 1).toUpperCase();
+      $('itemName').textContent = payload.name || '未命名登录项';
+      $('itemDomain').textContent = (payload.domains || []).join(' · ') || '未提供网站';
+      $('fields').append(field('用户名', payload.username), field('密码', payload.password, {secret: true}));
+      if (payload.totp) $('fields').append(field('TOTP', payload.totp.secret, {secret: true}));
+      $('loading').hidden = true; $('content').hidden = false;
     }
-    load().catch((error) => { $('status').hidden = true; $('error').textContent = error.message || '无法读取分享内容'; $('error').hidden = false; });
+    load().catch((error) => { $('loading').hidden = true; $('errorTitle').textContent = '无法打开分享'; $('errorMessage').textContent = error.message || '无法读取分享内容。'; $('error').hidden = false; });
   </script>
 </body>
 </html>
