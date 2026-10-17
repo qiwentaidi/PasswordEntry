@@ -12,7 +12,7 @@
     {
       "binding": "DB",
       "database_name": "password-entry-share",
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "database_id": "7f1aa4c7-e23f-4d1a-9630-0fb7deb4193f",
       "migrations_dir": "migrations"
     }
   ]

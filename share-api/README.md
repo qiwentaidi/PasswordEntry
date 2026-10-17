@@ -9,6 +9,8 @@ The production deployment is a Cloudflare Worker backed by D1. It keeps the exis
 
 The Worker stores only the client-encrypted AES-GCM payload. The view secret remains in the URL fragment and is never sent to the Worker.
 
+The current deployment is available at `https://password-entry-share.password-entry-share.workers.dev`. Configure this origin in the desktop app under “Settings → Share Service” for acceptance testing.
+
 ## Deploy to Cloudflare
 
 Install dependencies from this directory:
