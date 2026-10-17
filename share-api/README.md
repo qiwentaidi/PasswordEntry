@@ -9,37 +9,91 @@ The production deployment is a Cloudflare Worker backed by D1. It keeps the exis
 
 The Worker stores only the client-encrypted AES-GCM payload. The view secret remains in the URL fragment and is never sent to the Worker.
 
-The current deployment is available at `https://password-entry-share.password-entry-share.workers.dev`. Configure this origin in the desktop app under “Settings → Share Service” for acceptance testing.
+The reference deployment is available at `https://password-entry-share.password-entry-share.workers.dev`. Configure this origin in the desktop app under “Settings → Share Service” for acceptance testing.
 
-## Deploy to Cloudflare
+## Deploy it yourself
 
-Install dependencies from this directory:
+You need:
+
+- A Cloudflare account with Workers and D1 enabled.
+- Node.js 18 or newer and npm.
+- A domain managed by Cloudflare if you want a custom hostname. A `workers.dev` hostname is enough for testing.
+
+The deployment contains one Worker, one D1 database, and one static asset. The Worker handles the API and serves `public/share.html`; D1 stores only the encrypted payload and share lifecycle fields. The URL fragment after `#` contains the view secret and is never sent to Cloudflare.
+
+### Automated deployment
+
+From this directory, run:
 
 ```bash
 npm install
+npx wrangler login
+npm run deploy:self
 ```
 
-Create a D1 database and copy its ID into `wrangler.jsonc`:
+`deploy:self` performs these steps:
+
+1. Checks that Wrangler is authenticated.
+2. Looks for a D1 database named `password-entry-share` in the logged-in Cloudflare account.
+3. Creates it in the Asia-Pacific region if it does not exist.
+4. Writes that account's database ID and database name into the local `wrangler.jsonc`.
+5. Applies `migrations/0001_create_shares.sql` to the remote database.
+6. Runs the TypeScript check and deploys the Worker.
+
+To choose a different database name or primary location:
 
 ```bash
-npx wrangler d1 create password-entry-share
+DB_NAME=my-password-entry-share D1_LOCATION=weur npm run deploy:self
 ```
 
-Apply the schema locally while developing:
+The accepted `D1_LOCATION` values are `weur`, `eeur`, `apac`, `oc`, `wnam`, and `enam`. The deployment command prints the resulting Worker URL. Put that URL into the desktop app under “Settings → Share Service”.
+
+### Manual deployment
+
+If you prefer to review every step:
+
+```bash
+npm install
+npx wrangler login
+npx wrangler d1 create password-entry-share --location apac
+```
+
+Copy the returned `database_id` into `wrangler.jsonc`, replacing `REPLACE_WITH_D1_DATABASE_ID`, then run:
+
+```bash
+npm run db:migrate:remote
+npm run typecheck
+npm run deploy
+```
+
+For local development, use a local D1 instance and Wrangler's local server:
 
 ```bash
 npm run db:migrate:local
 npm run dev
 ```
 
-Apply it to the remote D1 database and deploy:
+The fallback Python server can also be used when Cloudflare tooling is unavailable:
 
 ```bash
-npm run db:migrate:remote
+python3 server.py
+```
+
+### Custom domain
+
+After deployment, open the Worker in the Cloudflare dashboard and add a Worker Custom Domain, such as `share.example.com`. Then set that full HTTPS origin in the desktop app. The API and share page must use the same origin because the recipient page calls `/v1/shares/{shareId}` relative to its own URL.
+
+### Updating an existing deployment
+
+After changing `src/worker.ts`, `public/share.html`, or the migration files:
+
+```bash
+npm run typecheck
+npm run db:migrate:remote   # only when there is a new migration
 npm run deploy
 ```
 
-The current deployment is `https://password-entry-share.password-entry-share.workers.dev`. The desktop app uses this origin by default; you can override it under “Settings → Share Service” when using a custom domain or local server.
+Use `npm run deploy:self` for first-time provisioning. Use `npm run deploy` for later code-only updates.
 
 ## Local Python fallback
 

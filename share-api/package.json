@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "dev": "wrangler dev",
+    "deploy:self": "./deploy.sh",
     "deploy": "wrangler deploy",
     "typecheck": "wrangler types && tsc --noEmit",
     "db:migrate:local": "wrangler d1 migrations apply password-entry-share --local",
