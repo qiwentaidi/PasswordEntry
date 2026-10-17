@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Password Entry</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main class="app">
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-mark"><img src="icons/icon48.png" alt=""></div>
+        <div><h1>Password Entry</h1><p id="statusText">正在连接桌面端</p></div>
+      </div>
+      <span id="statusBadge" class="status-badge status-connecting"><i></i><span>连接中</span></span>
+    </header>
+
+    <section id="offlineView" class="state-card hidden">
+      <div class="state-icon">⌁</div>
+      <div><h2>桌面端未运行</h2><p>打开 Password Entry.app 后，插件会自动同步保险库状态。</p></div>
+    </section>
+
+    <section id="lockedView" class="state-card hidden">
+      <div class="state-icon lock-icon">●</div>
+      <div><h2>保险库已锁定</h2><p>请在桌面端输入主密码。插件只跟随桌面端状态，不提供锁定或解锁操作。</p></div>
+    </section>
+
+    <section id="readyView" class="hidden">
+      <div class="site-card">
+        <div id="siteIcon" class="site-icon">◎</div>
+        <div class="site-copy"><span>当前网站</span><strong id="siteName"></strong><p id="siteUrl"></p></div>
+      </div>
+      <div class="section-heading"><span>匹配的登录项</span><span id="entryCount" class="count-badge">0</span></div>
+      <div id="entries" class="entries"></div>
+      <div id="noMatchView" class="empty-card hidden"><strong>当前网站没有匹配的登录项</strong><p>登录成功后，网页会提示你保存账号和密码。</p></div>
+      <button id="refreshButton" class="refresh-button">刷新状态</button>
+    </section>
+
+    <p id="message" class="message" role="status"></p>
+  </main>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

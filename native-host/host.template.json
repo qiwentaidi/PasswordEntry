@@ -1,0 +1,7 @@
+{
+  "name": "com.passwordentry.auth",
+  "description": "Password Entry macOS authentication helper",
+  "path": "__EXECUTABLE_PATH__",
+  "type": "stdio",
+  "allowed_origins": ["chrome-extension://__EXTENSION_ID__/"]
+}

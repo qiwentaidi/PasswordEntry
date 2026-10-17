@@ -1,0 +1,9 @@
+.DS_Store
+.build/
+.codegraph/
+dist/
+native-host/build/
+share-api/*.sqlite3
+share-api/*.sqlite3-shm
+share-api/*.sqlite3-wal
+share-api/__pycache__/

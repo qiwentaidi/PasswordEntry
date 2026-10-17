@@ -1,0 +1,4 @@
+shares.sqlite3
+shares.sqlite3-shm
+shares.sqlite3-wal
+__pycache__/

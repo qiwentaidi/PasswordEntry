@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Password Entry 分享</title>
+  <style>
+    :root { color-scheme: light dark; font: 16px system-ui, sans-serif; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f4f6f8; color: #17202a; }
+    main { width: min(560px, calc(100vw - 32px)); box-sizing: border-box; padding: 28px; border-radius: 18px; background: white; box-shadow: 0 12px 36px #0001; }
+    h1 { margin-top: 0; font-size: 1.35rem; }
+    .row { display: flex; align-items: center; gap: 12px; margin: 14px 0; }
+    .label { min-width: 90px; color: #667085; }
+    .value { overflow-wrap: anywhere; font-family: ui-monospace, monospace; }
+    button { border: 0; border-radius: 8px; padding: 9px 14px; cursor: pointer; background: #1565c0; color: white; }
+    .error { color: #b42318; }
+    .muted { color: #667085; font-size: .9rem; }
+    [hidden] { display: none; }
+    @media (prefers-color-scheme: dark) { body { background: #111827; color: #f9fafb; } main { background: #1f2937; } .label, .muted { color: #98a2b3; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Password Entry 分享</h1>
+    <p id="status" class="muted">正在读取加密内容…</p>
+    <section id="content" hidden></section>
+    <p id="error" class="error" hidden></p>
+  </main>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const decode = (value) => {
+      const normalized = value.replaceAll('-', '+').replaceAll('_', '/').padEnd(Math.ceil(value.length / 4) * 4, '=');
+      const bytes = atob(normalized);
+      return Uint8Array.from(bytes, (character) => character.charCodeAt(0));
+    };
+    const text = (label, value, copyable = false) => {
+      const row = document.createElement('div'); row.className = 'row';
+      const name = document.createElement('span'); name.className = 'label'; name.textContent = label;
+      const content = document.createElement('span'); content.className = 'value'; content.textContent = value || '—';
+      row.append(name, content);
+      if (copyable && value) {
+        const button = document.createElement('button'); button.textContent = '复制';
+        button.addEventListener('click', () => navigator.clipboard.writeText(value)); row.append(button);
+      }
+      return row;
+    };
+    async function load() {
+      const shareId = location.pathname.split('/').filter(Boolean).pop();
+      const secret = location.hash.slice(1);
+      history.replaceState(null, '', location.pathname);
+      if (!shareId || !secret) throw new Error('分享链接不完整');
+      const response = await fetch('/v1/shares/' + encodeURIComponent(shareId), {cache: 'no-store'});
+      if (!response.ok) throw new Error(response.status === 410 ? '分享链接已过期或已撤销' : '分享链接不存在');
+      const envelope = await response.json();
+      const key = await crypto.subtle.importKey('raw', decode(secret), {name: 'AES-GCM'}, false, ['decrypt']);
+      const aad = new TextEncoder().encode('password-entry-share:v1:' + shareId);
+      const clear = await crypto.subtle.decrypt({name: 'AES-GCM', iv: decode(envelope.iv), additionalData: aad, tagLength: 128}, key, decode(envelope.ciphertext));
+      const payload = JSON.parse(new TextDecoder().decode(clear));
+      const content = $('content');
+      content.append(text('名称', payload.name));
+      content.append(text('网站', (payload.domains || []).join(', ')));
+      content.append(text('用户名', payload.username, true));
+      content.append(text('密码', payload.password, true));
+      if (payload.totp) content.append(text('TOTP 密钥', payload.totp.secret, true));
+      $('status').textContent = '以下是发送方分享的副本；原始保险库不会被修改。';
+      content.hidden = false;
+    }
+    load().catch((error) => { $('status').hidden = true; $('error').textContent = error.message || '无法读取分享内容'; $('error').hidden = false; });
+  </script>
+</body>
+</html>
