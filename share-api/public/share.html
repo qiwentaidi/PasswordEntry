@@ -158,9 +158,9 @@
       const shareId = location.pathname.split('/').filter(Boolean).pop();
       const secret = location.hash.slice(1);
       history.replaceState(null, '', location.pathname);
-      if (!shareId || !secret) throw new Error('分享链接不完整，请确认链接包含末尾的密钥。');
+      if (!shareId || !secret) throw new Error('分享链接已失效或者过期。');
       const response = await fetch('/v1/shares/' + encodeURIComponent(shareId), {cache: 'no-store'});
-      if (!response.ok) throw new Error(response.status === 410 ? '分享链接已过期或已撤销。' : '分享链接不存在或暂时无法访问。');
+      if (!response.ok) throw new Error(response.status === 410 ? '分享链接已失效或者过期。' : '分享链接不存在或暂时无法访问。');
       const envelope = await response.json();
       const key = await crypto.subtle.importKey('raw', decode(secret), {name: 'AES-GCM'}, false, ['decrypt']);
       const aad = new TextEncoder().encode('password-entry-share:v1:' + shareId);
