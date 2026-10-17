@@ -1,19 +1,46 @@
 # Password Entry Share API
 
-This is the minimal share service for local development and a small deployment. It stores only AES-GCM ciphertext, never the view secret from the URL fragment.
+The production deployment is a Cloudflare Worker backed by D1. It keeps the existing API and link contract:
+
+- `POST /v1/shares`
+- `GET /v1/shares/{shareId}`
+- `DELETE /v1/shares/{shareId}`
+- `https://share.example.com/s/{shareId}#view-secret`
+
+The Worker stores only the client-encrypted AES-GCM payload. The view secret remains in the URL fragment and is never sent to the Worker.
+
+## Deploy to Cloudflare
+
+Install dependencies from this directory:
 
 ```bash
-python3 share-api/server.py
+npm install
 ```
 
-Environment variables:
+Create a D1 database and copy its ID into `wrangler.jsonc`:
 
-- `PASSWORD_ENTRY_SHARE_HOST` (default `127.0.0.1`)
-- `PASSWORD_ENTRY_SHARE_PORT` (default `8787`)
-- `PASSWORD_ENTRY_SHARE_DB` (default `share-api/shares.sqlite3`)
+```bash
+npx wrangler d1 create password-entry-share
+```
 
-The desktop client uses the API address configured in the app's “Settings → Share Service” section. The current default is `http://127.0.0.1:8787`; change it to the HTTPS share service before distributing the app.
+Apply the schema locally while developing:
 
-The service is intentionally missing accounts, email verification, attachments, and one-time links. Add authentication, HTTPS, rate limiting, and encrypted backups before exposing it publicly.
+```bash
+npm run db:migrate:local
+npm run dev
+```
 
-The same process serves the recipient page at `/s/{shareId}`. In production, put it behind HTTPS and a reverse proxy or deploy the API and static page to equivalent managed services.
+Apply it to the remote D1 database and deploy:
+
+```bash
+npm run db:migrate:remote
+npm run deploy
+```
+
+Attach a custom domain to the Worker, then enter that HTTPS origin in the desktop app under “Settings → Share Service”, for example `https://share.example.com`.
+
+## Local Python fallback
+
+`server.py` remains available for offline local testing, but it is not the production deployment. The Cloudflare implementation is in `src/worker.ts`; the recipient page is deployed from `public/share.html`.
+
+The service intentionally does not include accounts, email verification, attachments, or one-time links yet. Add rate limiting and abuse controls before opening anonymous creation to the public internet.

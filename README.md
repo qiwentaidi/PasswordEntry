@@ -53,13 +53,13 @@ Chrome 扩展仍需要在 `chrome://extensions` 中开启开发者模式并加�
 
 ### 分享链接 MVP
 
-分享功能默认使用本地开发 API `http://127.0.0.1:8787`。启动服务：
+分享功能的生产 API 使用 Cloudflare Workers + D1，部署说明见 [share-api/README.md](share-api/README.md)。本地开发仍可使用 `http://127.0.0.1:8787`：
 
 ```bash
 python3 share-api/server.py
 ```
 
-桌面端会在客户端生成 AES-GCM 加密副本、查看密钥和撤销密钥；云端 SQLite 只保存加密副本和分享生命周期信息。部署到 HTTPS 地址后，在桌面端“设置 → 分享服务”中填写 API 地址，例如 `https://share.example.com`。
+桌面端会在客户端生成 AES-GCM 加密副本、查看密钥和撤销密钥；云端 D1 只保存加密副本和分享生命周期信息。部署到 HTTPS 地址后，在桌面端“设置 → 分享服务”中填写 API 地址，例如 `https://share.example.com`。
 
 链接中的查看密钥位于 URL fragment（`#` 后），服务端不会收到它。当前 MVP 支持登录项、默认 7 天过期、复制链接和手动撤销；邮箱限制、附件和单次查看尚未加入。
 

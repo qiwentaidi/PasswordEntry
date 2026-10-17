@@ -7,3 +7,7 @@ share-api/*.sqlite3
 share-api/*.sqlite3-shm
 share-api/*.sqlite3-wal
 share-api/__pycache__/
+share-api/node_modules/
+share-api/.wrangler/
+share-api/.dev.vars
+share-api/worker-configuration.d.ts
