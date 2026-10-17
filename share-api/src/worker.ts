@@ -31,6 +31,7 @@ const RATE_LIMIT_REQUESTS = 60;
 const RATE_LIMIT_CREATE_REQUESTS = 10;
 const EXPIRED_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const REVOKED_RETENTION_MS = 24 * 60 * 60 * 1000;
+const LEGACY_HOST = "password-entry-share.password-entry-share.workers.dev";
 const SHARE_ID_RE = /^[A-Za-z0-9_-]{20,64}$/;
 const BASE64URL_RE = /^[A-Za-z0-9_-]+$/;
 
@@ -226,6 +227,7 @@ async function api(request: Request, env: Env): Promise<Response> {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+    if (url.hostname === LEGACY_HOST) return errorResponse(410, "share service moved");
     if (url.pathname.startsWith("/v1/")) return api(request, env);
     if (url.pathname.match(/^\/s\/[A-Za-z0-9_-]{20,64}$/)) return env.ASSETS.fetch(sharePageRequest(request));
     return env.ASSETS.fetch(request);

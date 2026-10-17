@@ -3,15 +3,17 @@ import AppKit
 import Combine
 import PasswordEntryCore
 
-private func copySensitiveValue(_ value: String, clearAfter delay: TimeInterval = 30) {
+@discardableResult
+private func copySensitiveValue(_ value: String, clearAfter delay: TimeInterval = 30) -> Bool {
     let pasteboard = NSPasteboard.general
     pasteboard.clearContents()
-    pasteboard.setString(value, forType: .string)
+    guard pasteboard.setString(value, forType: .string) else { return false }
     let writeCount = pasteboard.changeCount
     DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
         guard pasteboard.changeCount == writeCount else { return }
         pasteboard.clearContents()
     }
+    return true
 }
 
 @MainActor
@@ -106,6 +108,9 @@ final class DesktopModel: ObservableObject {
     }
 
     func createShare(entry: LoginEntry, includeTotp: Bool, expiresAt: Date) async throws -> ShareRecord {
+        if includeTotp && expiresAt > Date().addingTimeInterval(60 * 60) {
+            throw ShareAPIError.totpShareExpiryTooLong
+        }
         let material = try ShareCrypto.prepare(entry: entry, includeTotp: includeTotp)
         let api = shareAPI
         let serverShareID = try await api.create(material: material, expiresAt: expiresAt)
@@ -240,6 +245,23 @@ struct EntryDetail: View {
     @State private var codeCounter: Int?
     @State private var showPassword = false
     @State private var showShare = false
+    @State private var copiedField = ""
+
+    private func copy(_ value: String, field: String) {
+        let success = copySensitiveValue(value)
+        copiedField = success ? field : "\(field)-error"
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            if copiedField == field || copiedField == "\(field)-error" { copiedField = "" }
+        }
+    }
+
+    private func copyButton(_ value: String, field: String) -> some View {
+        Button { copy(value, field: field) } label: {
+            Image(systemName: copiedField == field ? "checkmark" : (copiedField == "\(field)-error" ? "exclamationmark.triangle" : "doc.on.doc"))
+        }
+        .help(copiedField == field ? "已复制" : (copiedField == "\(field)-error" ? "复制失败" : "复制"))
+        .accessibilityLabel(copiedField == field ? "已复制" : (copiedField == "\(field)-error" ? "复制失败" : "复制"))
+    }
 
     var body: some View {
         Form {
@@ -258,8 +280,8 @@ struct EntryDetail: View {
                 }
             }
             Section("登录信息") {
-                LabeledContent("用户名") { Text(entry.username); Button { copySensitiveValue(entry.username) } label: { Image(systemName: "doc.on.doc") } }
-                LabeledContent("密码") { HStack { Text(showPassword ? entry.password : String(repeating: "•", count: 10)); Button { showPassword.toggle() } label: { Image(systemName: showPassword ? "eye.slash" : "eye") }; Button { copySensitiveValue(entry.password) } label: { Image(systemName: "doc.on.doc") } } }
+                LabeledContent("用户名") { Text(entry.username); copyButton(entry.username, field: "username") }
+                LabeledContent("密码") { HStack { Text(showPassword ? entry.password : String(repeating: "•", count: 10)); Button { showPassword.toggle() } label: { Image(systemName: showPassword ? "eye.slash" : "eye") }; copyButton(entry.password, field: "password") } }
             }
             if let totp = entry.totp {
                 Section("一次性验证码") {
@@ -271,14 +293,16 @@ struct EntryDetail: View {
                             ProgressView(value: Double(remaining), total: Double(max(totp.period, 1))).frame(width: 110)
                         }
                         Spacer()
-                        Button("读取并复制") {
+                        Button(copiedField == "totp" ? "已复制" : (copiedField == "totp-error" ? "复制失败" : "读取并复制")) {
                             do {
                                 try LocalAuth.authenticate(reason: "允许读取并复制验证码")
                                 code = try TOTP.generate(totp, date: clock)
                                 codeCounter = Int(clock.timeIntervalSince1970 / Double(max(totp.period, 1)))
-                                copySensitiveValue(code)
+                                copy(code, field: "totp")
                             } catch { model.errorMessage = error.localizedDescription }
-                        }.buttonStyle(.borderedProminent)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .overlay(alignment: .trailing) { if copiedField == "totp" { Image(systemName: "checkmark").padding(.trailing, 12).foregroundStyle(.white) } }
                     }
                 }
             }
@@ -296,10 +320,11 @@ struct EntryDetail: View {
                             }
                             Spacer()
                             if !share.isRevoked && !share.isExpired {
-                                Button("复制链接") {
+                                Button(copiedField == "history-\(share.id.uuidString)" ? "已复制" : (copiedField == "history-\(share.id.uuidString)-error" ? "复制失败" : "复制链接")) {
                                     if let url = share.shareURL(baseURL: model.shareAPI.baseURL) {
-                                        NSPasteboard.general.clearContents()
-                                        NSPasteboard.general.setString(url.absoluteString, forType: .string)
+                                        copy(url.absoluteString, field: "history-\(share.id.uuidString)")
+                                    } else {
+                                        copiedField = "history-\(share.id.uuidString)-error"
                                     }
                                 }
                                 Button("撤销", role: .destructive) {
@@ -364,6 +389,14 @@ struct ShareSheet: View {
     @State private var isWorking = false
     @State private var link: URL?
     @State private var message = ""
+    @State private var linkCopyState = ""
+
+    private func copyLink(_ link: URL) {
+        linkCopyState = copySensitiveValue(link.absoluteString) ? "success" : "failure"
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            if linkCopyState == "success" || linkCopyState == "failure" { linkCopyState = "" }
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -379,23 +412,28 @@ struct ShareSheet: View {
                     .textFieldStyle(.roundedBorder)
                     .textSelection(.enabled)
                 HStack {
-                    Button("复制链接") {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(link.absoluteString, forType: .string)
-                    }
+                    Button(linkCopyState == "success" ? "已复制" : (linkCopyState == "failure" ? "复制失败" : "复制链接")) { copyLink(link) }
                     .buttonStyle(.borderedProminent)
                     Spacer()
                     Button("完成") { dismiss() }
                 }
             } else {
                 Picker("有效期", selection: $expiry) {
-                    ForEach(ShareExpiry.allCases) { value in Text(value.title).tag(value) }
+                    ForEach(ShareExpiry.allCases) { value in
+                        Text(value.title).tag(value).disabled(includeTotp && value != .hour)
+                    }
                 }
                 .pickerStyle(.menu)
                 Toggle("包含 TOTP 密钥", isOn: $includeTotp)
-                Text("包含 TOTP 后，接收方可以看到并使用该一次性验证码配置。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if includeTotp {
+                    Text("安全提示：接收方可在有效期内持续生成验证码。包含 TOTP 的分享最多有效 1 小时。")
+                        .foregroundStyle(.orange)
+                        .font(.caption)
+                } else {
+                    Text("包含 TOTP 后，接收方可以看到并使用该一次性验证码配置。")
+                        .foregroundStyle(.secondary)
+                        .font(.caption)
+                }
                 if !message.isEmpty { Text(message).font(.caption).foregroundStyle(.red) }
                 HStack {
                     Button("取消") { dismiss() }
@@ -409,12 +447,15 @@ struct ShareSheet: View {
         }
         .padding(24)
         .frame(width: 460)
+        .onChange(of: includeTotp) { enabled in
+            if enabled { expiry = .hour }
+        }
     }
 
     private func create() {
         isWorking = true
         message = ""
-        let expiresAt = Date().addingTimeInterval(expiry.seconds)
+        let expiresAt = Date().addingTimeInterval(includeTotp ? min(expiry.seconds, 60 * 60) : expiry.seconds)
         Task {
             do {
                 let record = try await model.createShare(entry: entry, includeTotp: includeTotp, expiresAt: expiresAt)

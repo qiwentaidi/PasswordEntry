@@ -9,7 +9,7 @@ The production deployment is a Cloudflare Worker backed by D1. It keeps the exis
 
 The Worker stores only the client-encrypted AES-GCM payload. The view secret remains in the URL fragment and is never sent to the Worker.
 
-项目不提供固定的公共默认分享服务。每个部署者都应使用自己的 Cloudflare Worker URL，并在桌面端“设置 → 分享服务”中配置；新安装版本默认使用本地开发地址 `http://127.0.0.1:8787`。
+当前桌面端默认使用 `https://share.password-entry-share.workers.dev`；其他部署者应在桌面端“设置 → 分享服务”中配置自己的 Cloudflare Worker URL，本地开发时可使用 `http://127.0.0.1:8787`。
 
 ## Deploy it yourself
 

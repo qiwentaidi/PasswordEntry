@@ -60,6 +60,8 @@
     .field-main { min-width: 0; flex: 1; }
     .field-value { display: block; overflow: hidden; color: var(--ink); font-size: 15px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
     .field-value.secret { letter-spacing: .16em; }
+    .totp-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 21px; letter-spacing: .14em; }
+    .field-meta { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; }
     .field-actions { display: flex; align-items: center; gap: 7px; }
     .icon-button, .copy-button {
       display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--line); border-radius: 9px;
@@ -135,10 +137,45 @@
       const bytes = atob(normalized);
       return Uint8Array.from(bytes, (character) => character.charCodeAt(0));
     };
+    const base32Alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+    function decodeBase32(value) {
+      const normalized = String(value || '').replace(/[=\s]/g, '').toUpperCase();
+      if (!normalized) throw new Error('TOTP 配置无效');
+      let buffer = 0; let bits = 0; const output = [];
+      for (const character of normalized) {
+        const index = base32Alphabet.indexOf(character);
+        if (index < 0) throw new Error('TOTP 配置无效');
+        buffer = (buffer << 5) | index; bits += 5;
+        if (bits >= 8) { bits -= 8; output.push((buffer >> bits) & 0xff); buffer &= (1 << bits) - 1; }
+      }
+      if (!output.length) throw new Error('TOTP 配置无效');
+      return new Uint8Array(output);
+    }
+    async function generateTotp(config, timestamp = Date.now()) {
+      const period = Number.isInteger(Number(config?.period)) && Number(config.period) > 0 ? Number(config.period) : 30;
+      const digits = [6, 8].includes(Number(config?.digits)) ? Number(config.digits) : 6;
+      const algorithm = String(config?.algorithm || 'SHA1').toUpperCase();
+      if (!['SHA1', 'SHA256', 'SHA512'].includes(algorithm)) throw new Error('TOTP 配置无效');
+      const counter = Math.floor(timestamp / 1000 / period);
+      const message = new ArrayBuffer(8); const view = new DataView(message);
+      view.setUint32(0, Math.floor(counter / 0x100000000)); view.setUint32(4, counter >>> 0);
+      const hashName = {SHA1: 'SHA-1', SHA256: 'SHA-256', SHA512: 'SHA-512'}[algorithm];
+      const key = await crypto.subtle.importKey('raw', decodeBase32(config.secret), {name: 'HMAC', hash: {name: hashName}}, false, ['sign']);
+      const digest = new Uint8Array(await crypto.subtle.sign('HMAC', key, message));
+      const offset = digest[digest.length - 1] & 0x0f;
+      const binary = ((digest[offset] & 0x7f) << 24) | (digest[offset + 1] << 16) | (digest[offset + 2] << 8) | digest[offset + 3];
+      return {code: String(binary % (10 ** digits)).padStart(digits, '0'), period, counter};
+    }
     async function copyValue(value, button) {
-      try { await navigator.clipboard.writeText(value); }
-      catch { const area = document.createElement('textarea'); area.value = value; document.body.append(area); area.select(); document.execCommand('copy'); area.remove(); }
-      const original = button.innerHTML; button.textContent = '已复制'; setTimeout(() => { button.innerHTML = original; }, 1400);
+      let copied = false;
+      try { await navigator.clipboard.writeText(value); copied = true; }
+      catch {
+        try { const area = document.createElement('textarea'); area.value = value; document.body.append(area); area.select(); copied = document.execCommand('copy'); area.remove(); }
+        catch { copied = false; }
+      }
+      const original = button.innerHTML;
+      button.textContent = copied ? '已复制' : '复制失败';
+      setTimeout(() => { button.innerHTML = original; }, 1400);
     }
     function field(label, value, {secret = false} = {}) {
       const row = document.createElement('div'); row.className = 'field';
@@ -153,6 +190,31 @@
       }
       const copy = document.createElement('button'); copy.className = 'copy-button'; copy.type = 'button'; copy.innerHTML = icons.copy + '<span>复制</span>'; copy.addEventListener('click', () => copyValue(value, copy)); actions.append(copy);
       row.append(name, main, actions); return row;
+    }
+    function totpField(config) {
+      const row = document.createElement('div'); row.className = 'field';
+      const name = document.createElement('span'); name.className = 'field-label'; name.textContent = 'TOTP';
+      const main = document.createElement('div'); main.className = 'field-main';
+      const output = document.createElement('span'); output.className = 'field-value totp-code'; output.textContent = '------';
+      const meta = document.createElement('span'); meta.className = 'field-meta'; meta.textContent = '正在生成验证码…';
+      main.append(output, meta);
+      const actions = document.createElement('div'); actions.className = 'field-actions';
+      const copy = document.createElement('button'); copy.className = 'copy-button'; copy.type = 'button'; copy.disabled = true; copy.innerHTML = icons.copy + '<span>复制</span>';
+      let currentCode = ''; let currentCounter = -1; let updateInFlight = false;
+      copy.addEventListener('click', () => { if (currentCode) copyValue(currentCode, copy); });
+      actions.append(copy); row.append(name, main, actions);
+      const update = async () => {
+        if (updateInFlight) return;
+        updateInFlight = true;
+        try {
+          const now = Date.now(); const result = await generateTotp(config, now);
+          const remaining = result.period - (Math.floor(now / 1000) % result.period);
+          if (result.counter !== currentCounter) { currentCode = result.code; currentCounter = result.counter; output.textContent = result.code; copy.disabled = false; }
+          meta.textContent = `有效期剩余 ${remaining} 秒`;
+        } catch { output.textContent = '不可用'; meta.textContent = 'TOTP 配置无效'; copy.disabled = true; }
+        finally { updateInFlight = false; }
+      };
+      update(); window.setInterval(update, 1000); return row;
     }
     async function load() {
       const shareId = location.pathname.split('/').filter(Boolean).pop();
@@ -170,7 +232,7 @@
       $('itemName').textContent = payload.name || '未命名登录项';
       $('itemDomain').textContent = (payload.domains || []).join(' · ') || '未提供网站';
       $('fields').append(field('用户名', payload.username), field('密码', payload.password, {secret: true}));
-      if (payload.totp) $('fields').append(field('TOTP', payload.totp.secret, {secret: true}));
+      if (payload.totp) $('fields').append(totpField(payload.totp));
       $('loading').hidden = true; $('content').hidden = false;
     }
     load().catch((error) => { $('loading').hidden = true; $('errorTitle').textContent = '无法打开分享'; $('errorMessage').textContent = error.message || '无法读取分享内容。'; $('error').hidden = false; });

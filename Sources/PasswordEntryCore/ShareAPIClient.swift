@@ -2,12 +2,14 @@ import Foundation
 
 public enum ShareAPIError: LocalizedError, Sendable {
     case invalidBaseURL
+    case totpShareExpiryTooLong
     case server(status: Int, message: String)
     case invalidResponse
 
     public var errorDescription: String? {
         switch self {
         case .invalidBaseURL: return "分享服务地址无效"
+        case .totpShareExpiryTooLong: return "包含 TOTP 的分享有效期不能超过 1 小时"
         case .server(let status, let message): return message.isEmpty ? "分享服务请求失败（HTTP \(status)）" : message
         case .invalidResponse: return "分享服务返回了无效响应"
         }
@@ -45,7 +47,7 @@ private struct CreateShareResponse: Decodable {
 }
 
 public final class ShareAPIClient: @unchecked Sendable {
-    public static let defaultBaseURL = URL(string: "http://127.0.0.1:8787")!
+    public static let defaultBaseURL = URL(string: "https://share.password-entry-share.workers.dev")!
     public let baseURL: URL
     private let session: URLSession
     private let encoder: JSONEncoder
