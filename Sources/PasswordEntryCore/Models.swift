@@ -72,6 +72,7 @@ public struct LoginEntry: Codable, Identifiable, Equatable, Sendable {
 public struct ShareRecord: Codable, Identifiable, Equatable, Sendable {
     public let id: UUID
     public let serverShareID: String
+    public let apiBaseURL: String
     public let entryID: UUID
     public let viewSecret: String
     public let revokeSecret: String
@@ -79,9 +80,10 @@ public struct ShareRecord: Codable, Identifiable, Equatable, Sendable {
     public let expiresAt: Date
     public var revokedAt: Date?
 
-    public init(id: UUID = UUID(), serverShareID: String, entryID: UUID, viewSecret: String, revokeSecret: String, createdAt: Date = .now, expiresAt: Date, revokedAt: Date? = nil) {
+    public init(id: UUID = UUID(), serverShareID: String, apiBaseURL: String = "", entryID: UUID, viewSecret: String, revokeSecret: String, createdAt: Date = .now, expiresAt: Date, revokedAt: Date? = nil) {
         self.id = id
         self.serverShareID = serverShareID
+        self.apiBaseURL = apiBaseURL
         self.entryID = entryID
         self.viewSecret = viewSecret
         self.revokeSecret = revokeSecret
@@ -90,16 +92,47 @@ public struct ShareRecord: Codable, Identifiable, Equatable, Sendable {
         self.revokedAt = revokedAt
     }
 
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case serverShareID
+        case apiBaseURL
+        case entryID
+        case viewSecret
+        case revokeSecret
+        case createdAt
+        case expiresAt
+        case revokedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        serverShareID = try container.decode(String.self, forKey: .serverShareID)
+        apiBaseURL = try container.decodeIfPresent(String.self, forKey: .apiBaseURL) ?? ""
+        entryID = try container.decode(UUID.self, forKey: .entryID)
+        viewSecret = try container.decode(String.self, forKey: .viewSecret)
+        revokeSecret = try container.decode(String.self, forKey: .revokeSecret)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        expiresAt = try container.decode(Date.self, forKey: .expiresAt)
+        revokedAt = try container.decodeIfPresent(Date.self, forKey: .revokedAt)
+    }
+
     public var isRevoked: Bool { revokedAt != nil }
     public var isExpired: Bool { expiresAt <= .now }
 
     public func shareURL(baseURL: URL) -> URL? {
-        let root = baseURL
+        let configuredBase = URL(string: apiBaseURL).flatMap(Self.validBaseURL) ?? baseURL
+        let root = configuredBase
             .appendingPathComponent("s", isDirectory: true)
             .appendingPathComponent(serverShareID, isDirectory: false)
         guard var components = URLComponents(url: root, resolvingAgainstBaseURL: false) else { return nil }
         components.fragment = viewSecret
         return components.url
+    }
+
+    private static func validBaseURL(_ url: URL) -> URL? {
+        guard let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme), url.host != nil else { return nil }
+        return url
     }
 }
 

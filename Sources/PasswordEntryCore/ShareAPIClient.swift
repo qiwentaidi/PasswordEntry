@@ -45,14 +45,14 @@ private struct CreateShareResponse: Decodable {
 }
 
 public final class ShareAPIClient: @unchecked Sendable {
+    public static let defaultBaseURL = URL(string: "http://127.0.0.1:8787")!
     public let baseURL: URL
     private let session: URLSession
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
 
     public init(baseURL: URL? = nil, session: URLSession = .shared) {
-        let configured = ProcessInfo.processInfo.environment["PASSWORD_ENTRY_SHARE_API_URL"]
-        self.baseURL = baseURL ?? URL(string: configured ?? "http://127.0.0.1:8787")!
+        self.baseURL = baseURL ?? Self.defaultBaseURL
         self.session = session
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601

@@ -6,16 +6,22 @@ import PasswordEntryCore
 @MainActor
 final class DesktopModel: ObservableObject {
     let store = VaultStore()
-    let shareAPI = ShareAPIClient()
+    private(set) var shareAPI: ShareAPIClient
     private let server: AgentServer
+    private static let shareAPIURLKey = "shareAPIURL"
     @Published var isUnlocked = false
     @Published var entries: [LoginEntry] = []
     @Published var shares: [ShareRecord] = []
+    @Published var shareAPIURL: String
     @Published var selectedID: UUID?
     @Published var errorMessage = ""
     @Published var isWorking = false
 
     init() {
+        let storedURL = UserDefaults.standard.string(forKey: Self.shareAPIURLKey).flatMap(URL.init(string:))
+        let configuredURL = storedURL.flatMap(Self.validShareAPIURL) ?? ShareAPIClient.defaultBaseURL
+        shareAPIURL = configuredURL.absoluteString
+        shareAPI = ShareAPIClient(baseURL: configuredURL)
         server = AgentServer(store: store)
         server.onVaultChanged = { [weak self] in
             DispatchQueue.main.async { self?.refresh() }
@@ -78,14 +84,25 @@ final class DesktopModel: ObservableObject {
         shares.filter { $0.entryID == entry.id }.sorted { $0.createdAt > $1.createdAt }
     }
 
+    func updateShareAPIURL(_ value: String) throws {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmed), let validURL = Self.validShareAPIURL(url) else {
+            throw ShareAPIError.invalidBaseURL
+        }
+        shareAPIURL = validURL.absoluteString
+        shareAPI = ShareAPIClient(baseURL: validURL)
+        UserDefaults.standard.set(shareAPIURL, forKey: Self.shareAPIURLKey)
+    }
+
     func createShare(entry: LoginEntry, includeTotp: Bool, expiresAt: Date) async throws -> ShareRecord {
         let material = try ShareCrypto.prepare(entry: entry, includeTotp: includeTotp)
-        let serverShareID = try await shareAPI.create(material: material, expiresAt: expiresAt)
-        let record = ShareRecord(serverShareID: serverShareID, entryID: entry.id, viewSecret: material.viewSecret, revokeSecret: material.revokeSecret, expiresAt: expiresAt)
+        let api = shareAPI
+        let serverShareID = try await api.create(material: material, expiresAt: expiresAt)
+        let record = ShareRecord(serverShareID: serverShareID, apiBaseURL: api.baseURL.absoluteString, entryID: entry.id, viewSecret: material.viewSecret, revokeSecret: material.revokeSecret, expiresAt: expiresAt)
         do {
             try store.saveShare(record)
         } catch {
-            try? await shareAPI.revoke(shareID: serverShareID, revokeSecret: material.revokeSecret)
+            try? await api.revoke(shareID: serverShareID, revokeSecret: material.revokeSecret)
             throw error
         }
         shares = try store.shares()
@@ -93,9 +110,16 @@ final class DesktopModel: ObservableObject {
     }
 
     func revokeShare(_ share: ShareRecord) async throws {
-        try await shareAPI.revoke(shareID: share.serverShareID, revokeSecret: share.revokeSecret)
+        let api = share.apiBaseURL.isEmpty ? shareAPI : ShareAPIClient(baseURL: URL(string: share.apiBaseURL) ?? shareAPI.baseURL)
+        try await api.revoke(shareID: share.serverShareID, revokeSecret: share.revokeSecret)
         try store.revokeShare(id: share.id)
         shares = try store.shares()
+    }
+
+    private static func validShareAPIURL(_ url: URL) -> URL? {
+        guard let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme), url.host != nil,
+              (url.path.isEmpty || url.path == "/"), url.query == nil, url.fragment == nil else { return nil }
+        return url
     }
 }
 
@@ -431,8 +455,15 @@ struct EntryEditor: View {
 }
 
 struct SettingsView: View {
+    @ObservedObject var model: DesktopModel
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
+    @State private var shareAPIURL: String
     @State private var message = ""
+
+    init(model: DesktopModel) {
+        self.model = model
+        _shareAPIURL = State(initialValue: model.shareAPIURL)
+    }
 
     var body: some View {
         Form {
@@ -445,6 +476,18 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            Section("分享服务") {
+                TextField("API 地址", text: $shareAPIURL)
+                    .textFieldStyle(.roundedBorder)
+                Text("填写部署后的 HTTPS 地址，例如 https://share.example.com。开发环境可使用 http://127.0.0.1:8787。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                HStack {
+                    Spacer()
+                    Button("保存分享服务地址") { updateShareAPIURL() }
+                        .buttonStyle(.borderedProminent)
+                }
+            }
             if !message.isEmpty {
                 Text(message).font(.caption).foregroundStyle(.secondary)
             }
@@ -452,6 +495,16 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .frame(width: 440)
         .padding(.vertical, 8)
+    }
+
+    private func updateShareAPIURL() {
+        do {
+            try model.updateShareAPIURL(shareAPIURL)
+            shareAPIURL = model.shareAPIURL
+            message = "分享服务地址已保存"
+        } catch {
+            message = error.localizedDescription
+        }
     }
 
     private func updateLaunchAtLogin(_ enabled: Bool) {
@@ -505,7 +558,7 @@ struct PasswordEntryDesktop: App {
                     .keyboardShortcut("L", modifiers: [.command, .shift])
             }
         }
-        Window("设置", id: "settings") { SettingsView() }
+        Window("设置", id: "settings") { SettingsView(model: model) }
         MenuBarExtra("Password Entry", systemImage: "key.fill") {
             MenuBarView(model: model)
         }

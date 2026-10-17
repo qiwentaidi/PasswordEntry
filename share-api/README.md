@@ -12,7 +12,7 @@ Environment variables:
 - `PASSWORD_ENTRY_SHARE_PORT` (default `8787`)
 - `PASSWORD_ENTRY_SHARE_DB` (default `share-api/shares.sqlite3`)
 
-The desktop client uses `PASSWORD_ENTRY_SHARE_API_URL` to choose the API base URL. The current default is `http://127.0.0.1:8787`; set it to the HTTPS share service before distributing the app.
+The desktop client uses the API address configured in the app's “Settings → Share Service” section. The current default is `http://127.0.0.1:8787`; change it to the HTTPS share service before distributing the app.
 
 The service is intentionally missing accounts, email verification, attachments, and one-time links. Add authentication, HTTPS, rate limiting, and encrypted backups before exposing it publicly.
 
