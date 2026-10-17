@@ -51,9 +51,13 @@ Chrome 扩展仍需要在 `chrome://extensions` 中开启开发者模式并加�
 - 默认按精确主机名或其子域名匹配，填充需要用户点击。
 - 同一网站、同一用户名再次通过保存提示保存时会更新已有密码，不会无限创建重复登录项。
 
-### 分享链接 MVP
+## 分享链接
 
-分享服务没有固定的公共默认地址。新安装版本默认使用本地地址 `http://127.0.0.1:8787`；自行部署 Cloudflare Worker 后，在桌面端“设置 → 分享服务”中填入你自己的 Worker URL。部署说明见 [share-api/README.md](share-api/README.md)：
+分享服务没有固定的公共默认地址。新安装版本默认使用本地地址 `http://127.0.0.1:8787`；**无法进行公网分享**
+
+### 无需服务器域名配置部署（需要科学访问）
+
+自行部署 Cloudflare Worker 后，在桌面端“设置 → 分享服务”中填入你自己的 Worker URL。部署说明见 [share-api/README.md](share-api/README.md)：
 
 自行部署时，在 `share-api/` 目录运行 `npm install && npx wrangler login && npm run deploy:self`；脚本会自动创建或复用 D1、执行迁移并发布 Worker。
 
@@ -64,3 +68,20 @@ python3 share-api/server.py
 桌面端会在客户端生成 AES-GCM 加密副本、查看密钥和撤销密钥；云端 D1 只保存加密副本和分享生命周期信息。部署到 HTTPS 地址后，在桌面端“设置 → 分享服务”中填写 API 地址，例如 `https://share.example.com`。
 
 链接中的查看密钥位于 URL fragment（`#` 后），服务端不会收到它。当前 MVP 支持登录项、默认 7 天过期、复制链接和手动撤销；邮箱限制、附件和单次查看尚未加入。
+
+### AI 一键部署与验收
+
+仓库内置部署 Skill：[skills/password-entry-share-deploy](skills/password-entry-share-deploy)。在支持仓库 Skill 的 AI 环境中，可以直接提出：
+
+```text
+使用 password-entry-share-deploy 部署我的分享服务
+```
+
+AI 会检查 Wrangler 登录状态；如果尚未登录，会打开 Cloudflare 授权流程并等待你完成登录，然后执行 `npm run deploy:self`，自动创建或复用 D1、执行迁移、检查 Worker 并发布。部署完成后，把 AI 输出的 Worker URL 填入桌面端“设置 → 分享服务”。
+
+建议按以下步骤验收：
+
+1. 创建并复制一个分享链接，在浏览器中打开并确认登录信息可以解密显示。
+2. 移除链接末尾的 `#` 密钥，确认页面显示“分享链接已失效或者过期”。
+3. 在桌面端撤销分享，再次打开链接，确认页面显示相同的失效提示。
+4. 确认 D1 中只保存加密密文和生命周期字段，不包含用户名或密码明文。

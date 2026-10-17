@@ -1,0 +1,4 @@
+interface:
+  display_name: "Password Entry Share Deploy"
+  short_description: "Deploy the Password Entry Cloudflare Worker and D1 share service"
+  default_prompt: "Deploy or update the Password Entry share service on Cloudflare and report the Worker URL."
