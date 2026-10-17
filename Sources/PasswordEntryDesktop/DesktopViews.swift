@@ -159,6 +159,7 @@ private enum EntryEditorMode: Identifiable {
 
 struct VaultView: View {
     @ObservedObject var model: DesktopModel
+    @Environment(\.openWindow) private var openWindow
     @State private var search = ""
     @State private var editorMode: EntryEditorMode?
 
@@ -177,6 +178,7 @@ struct VaultView: View {
             }.searchable(text: $search, prompt: "搜索保险库").toolbar {
                 ToolbarItemGroup {
                     Button("新增") { editorMode = .new }
+                    Button("设置", systemImage: "gearshape") { openWindow(id: "settings") }
                     Button("锁定") { model.lock() }
                 }
             }
