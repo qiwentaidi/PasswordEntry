@@ -9,7 +9,7 @@ The production deployment is a Cloudflare Worker backed by D1. It keeps the exis
 
 The Worker stores only the client-encrypted AES-GCM payload. The view secret remains in the URL fragment and is never sent to the Worker.
 
-The reference deployment is available at `https://password-entry-share.password-entry-share.workers.dev`. Configure this origin in the desktop app under “Settings → Share Service” for acceptance testing.
+项目不提供固定的公共默认分享服务。每个部署者都应使用自己的 Cloudflare Worker URL，并在桌面端“设置 → 分享服务”中配置；新安装版本默认使用本地开发地址 `http://127.0.0.1:8787`。
 
 ## Deploy it yourself
 
