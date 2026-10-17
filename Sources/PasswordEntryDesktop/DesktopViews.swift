@@ -3,6 +3,17 @@ import AppKit
 import Combine
 import PasswordEntryCore
 
+private func copySensitiveValue(_ value: String, clearAfter delay: TimeInterval = 30) {
+    let pasteboard = NSPasteboard.general
+    pasteboard.clearContents()
+    pasteboard.setString(value, forType: .string)
+    let writeCount = pasteboard.changeCount
+    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+        guard pasteboard.changeCount == writeCount else { return }
+        pasteboard.clearContents()
+    }
+}
+
 @MainActor
 final class DesktopModel: ObservableObject {
     let store = VaultStore()
@@ -117,7 +128,8 @@ final class DesktopModel: ObservableObject {
     }
 
     private static func validShareAPIURL(_ url: URL) -> URL? {
-        guard let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme), url.host != nil,
+        guard let scheme = url.scheme?.lowercased(), let host = url.host?.lowercased(), !host.isEmpty,
+              scheme == "https" || (scheme == "http" && ["localhost", "127.0.0.1", "::1"].contains(host)),
               (url.path.isEmpty || url.path == "/"), url.query == nil, url.fragment == nil else { return nil }
         return url
     }
@@ -246,8 +258,8 @@ struct EntryDetail: View {
                 }
             }
             Section("登录信息") {
-                LabeledContent("用户名") { Text(entry.username); Button { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(entry.username, forType: .string) } label: { Image(systemName: "doc.on.doc") } }
-                LabeledContent("密码") { HStack { Text(showPassword ? entry.password : String(repeating: "•", count: 10)); Button { showPassword.toggle() } label: { Image(systemName: showPassword ? "eye.slash" : "eye") }; Button { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(entry.password, forType: .string) } label: { Image(systemName: "doc.on.doc") } } }
+                LabeledContent("用户名") { Text(entry.username); Button { copySensitiveValue(entry.username) } label: { Image(systemName: "doc.on.doc") } }
+                LabeledContent("密码") { HStack { Text(showPassword ? entry.password : String(repeating: "•", count: 10)); Button { showPassword.toggle() } label: { Image(systemName: showPassword ? "eye.slash" : "eye") }; Button { copySensitiveValue(entry.password) } label: { Image(systemName: "doc.on.doc") } } }
             }
             if let totp = entry.totp {
                 Section("一次性验证码") {
@@ -264,7 +276,7 @@ struct EntryDetail: View {
                                 try LocalAuth.authenticate(reason: "允许读取并复制验证码")
                                 code = try TOTP.generate(totp, date: clock)
                                 codeCounter = Int(clock.timeIntervalSince1970 / Double(max(totp.period, 1)))
-                                NSPasteboard.general.clearContents(); NSPasteboard.general.setString(code, forType: .string)
+                                copySensitiveValue(code)
                             } catch { model.errorMessage = error.localizedDescription }
                         }.buttonStyle(.borderedProminent)
                     }
@@ -451,7 +463,11 @@ struct EntryEditor: View {
         else if let originalTotp = original?.totp, totpSecret == originalTotp.secret { config = originalTotp }
         else if totpSecret.lowercased().hasPrefix("otpauth://") { config = try? TotpConfig(otpauthURI: totpSecret) }
         else { config = TotpConfig(secret: totpSecret) }
-        model.save(LoginEntry(id: original?.id ?? UUID(), name: name, domains: [domain], username: username, password: password, totp: config, faviconData: original?.faviconData, faviconMimeType: original?.faviconMimeType, createdAt: original?.createdAt ?? .now, updatedAt: .now))
+        let preservedOrigins = original.flatMap { entry -> [String]? in
+            guard let normalized = LoginEntry.normalizeDomain(domain), entry.domains.contains(normalized) else { return nil }
+            return entry.origins
+        }
+        model.save(LoginEntry(id: original?.id ?? UUID(), name: name, domains: [domain], origins: preservedOrigins, username: username, password: password, totp: config, faviconData: original?.faviconData, faviconMimeType: original?.faviconMimeType, createdAt: original?.createdAt ?? .now, updatedAt: .now))
         dismiss()
     }
 }

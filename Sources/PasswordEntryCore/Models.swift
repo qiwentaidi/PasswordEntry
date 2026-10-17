@@ -36,6 +36,8 @@ public struct LoginEntry: Codable, Identifiable, Equatable, Sendable {
     public var id: UUID
     public var name: String
     public var domains: [String]
+    /// Canonical origins used for autofill matching. Empty for legacy records that only stored hosts.
+    public var origins: [String]
     public var username: String
     public var password: String
     public var totp: TotpConfig?
@@ -44,10 +46,11 @@ public struct LoginEntry: Codable, Identifiable, Equatable, Sendable {
     public var createdAt: Date
     public var updatedAt: Date
 
-    public init(id: UUID = UUID(), name: String, domains: [String], username: String, password: String, totp: TotpConfig? = nil, faviconData: Data? = nil, faviconMimeType: String? = nil, createdAt: Date = .now, updatedAt: Date = .now) {
+    public init(id: UUID = UUID(), name: String, domains: [String], origins: [String]? = nil, username: String, password: String, totp: TotpConfig? = nil, faviconData: Data? = nil, faviconMimeType: String? = nil, createdAt: Date = .now, updatedAt: Date = .now) {
         self.id = id
         self.name = name
         self.domains = domains.compactMap(Self.normalizeDomain)
+        self.origins = (origins ?? self.domains.map { "https://\($0):443" }).compactMap(Self.normalizeOrigin)
         self.username = username
         self.password = password
         self.totp = totp
@@ -55,6 +58,26 @@ public struct LoginEntry: Codable, Identifiable, Equatable, Sendable {
         self.faviconMimeType = faviconMimeType
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, domains, origins, username, password, totp, faviconData, faviconMimeType, createdAt, updatedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        domains = try container.decode([String].self, forKey: .domains).compactMap(Self.normalizeDomain)
+        // Old vaults have no origin list. Keep their host-only behavior until the next save migrates them.
+        origins = try container.decodeIfPresent([String].self, forKey: .origins)?.compactMap(Self.normalizeOrigin) ?? []
+        username = try container.decode(String.self, forKey: .username)
+        password = try container.decode(String.self, forKey: .password)
+        totp = try container.decodeIfPresent(TotpConfig.self, forKey: .totp)
+        faviconData = try container.decodeIfPresent(Data.self, forKey: .faviconData)
+        faviconMimeType = try container.decodeIfPresent(String.self, forKey: .faviconMimeType)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
     }
 
     public static func normalizeDomain(_ value: String) -> String? {
@@ -66,6 +89,18 @@ public struct LoginEntry: Codable, Identifiable, Equatable, Sendable {
         }
         let host = trimmed.lowercased().split(separator: "/", maxSplits: 1).first.map(String.init) ?? ""
         return host.isEmpty ? nil : host
+    }
+
+    public static func normalizeOrigin(_ value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let candidate = trimmed.contains("://") ? trimmed : "https://\(trimmed)"
+        guard let components = URLComponents(string: candidate),
+              let scheme = components.scheme?.lowercased(), ["http", "https"].contains(scheme),
+              let host = components.host?.lowercased(), !host.isEmpty else { return nil }
+        let port = components.port ?? (scheme == "https" ? 443 : 80)
+        let normalizedHost = host.contains(":") ? "[\(host)]" : host
+        return "\(scheme)://\(normalizedHost):\(port)"
     }
 }
 
@@ -131,7 +166,9 @@ public struct ShareRecord: Codable, Identifiable, Equatable, Sendable {
     }
 
     private static func validBaseURL(_ url: URL) -> URL? {
-        guard let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme), url.host != nil else { return nil }
+        guard let scheme = url.scheme?.lowercased(), let host = url.host?.lowercased(), !host.isEmpty else { return nil }
+        let loopback = ["localhost", "127.0.0.1", "::1"].contains(host)
+        guard scheme == "https" || (scheme == "http" && loopback) else { return nil }
         return url
     }
 }

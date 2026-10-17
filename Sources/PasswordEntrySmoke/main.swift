@@ -5,14 +5,24 @@ let path = FileManager.default.temporaryDirectory.appendingPathComponent("passwo
 let password = "TestVaultPassword-2026!"
 let testDeviceSecret = Data("smoke-device-secret".utf8)
 let store = VaultStore(fileURL: path, deviceSecretOverride: testDeviceSecret)
+do {
+    try store.unlock(password: "too-short")
+    fatalError("weak password was accepted")
+} catch VaultError.weakPassword {
+} catch {
+    fatalError("unexpected weak password error: \(error)")
+}
 try store.unlock(password: password)
 try store.saveEntry(LoginEntry(name: "Example", domains: ["example.com"], username: "demo", password: "secret", totp: TotpConfig(secret: "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ")))
 let favicon = Data([0, 1, 2, 3])
 try store.upsertLogin(name: "Example", domain: "https://example.com/login", username: "demo", password: "updated", faviconData: favicon, faviconMimeType: "image/png")
-let matched = try store.match(urlString: "https://login.example.com/sign-in")
+let matched = try store.match(urlString: "https://example.com/sign-in")
 precondition(matched.username == "demo" && matched.password == "updated")
 precondition(matched.domains == ["example.com"])
 precondition(matched.faviconData == favicon && matched.faviconMimeType == "image/png")
+precondition((try? store.match(urlString: "https://login.example.com/sign-in")) == nil)
+precondition((try? store.match(urlString: "http://example.com/sign-in")) == nil)
+precondition((try? store.match(urlString: "https://example.com:8443/sign-in")) == nil)
 let record = try JSONSerialization.jsonObject(with: Data(contentsOf: path)) as? [String: Any]
 precondition(record?["version"] as? Int == 2)
 let shareMaterial = try ShareCrypto.prepare(entry: matched, includeTotp: false)

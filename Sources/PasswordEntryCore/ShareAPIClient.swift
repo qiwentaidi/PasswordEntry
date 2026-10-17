@@ -62,7 +62,13 @@ public final class ShareAPIClient: @unchecked Sendable {
         self.decoder = decoder
     }
 
+    public static func isAllowedBaseURL(_ url: URL) -> Bool {
+        guard let scheme = url.scheme?.lowercased(), let host = url.host?.lowercased(), !host.isEmpty else { return false }
+        return scheme == "https" || (scheme == "http" && ["localhost", "127.0.0.1", "::1"].contains(host))
+    }
+
     public func create(material: ShareMaterial, expiresAt: Date) async throws -> String {
+        guard Self.isAllowedBaseURL(baseURL) else { throw ShareAPIError.invalidBaseURL }
         let endpoint = baseURL.appendingPathComponent("v1/shares", isDirectory: false)
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
@@ -82,6 +88,7 @@ public final class ShareAPIClient: @unchecked Sendable {
     }
 
     public func revoke(shareID: String, revokeSecret: String) async throws {
+        guard Self.isAllowedBaseURL(baseURL) else { throw ShareAPIError.invalidBaseURL }
         let endpoint = baseURL.appendingPathComponent("v1/shares/\(shareID)", isDirectory: false)
         var request = URLRequest(url: endpoint)
         request.httpMethod = "DELETE"
@@ -90,6 +97,7 @@ public final class ShareAPIClient: @unchecked Sendable {
     }
 
     public func makeShareURL(shareID: String, viewSecret: String) -> URL? {
+        guard Self.isAllowedBaseURL(baseURL) else { return nil }
         let root = baseURL.appendingPathComponent("s", isDirectory: true).appendingPathComponent(shareID, isDirectory: false)
         guard var components = URLComponents(url: root, resolvingAgainstBaseURL: false) else { return nil }
         components.fragment = viewSecret

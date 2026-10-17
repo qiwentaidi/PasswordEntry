@@ -14,3 +14,9 @@ CREATE TABLE IF NOT EXISTS shares (
 );
 
 CREATE INDEX IF NOT EXISTS shares_expires_at_idx ON shares(expires_at);
+
+CREATE TABLE IF NOT EXISTS rate_limits (
+    key TEXT PRIMARY KEY,
+    window_start INTEGER NOT NULL,
+    request_count INTEGER NOT NULL
+);

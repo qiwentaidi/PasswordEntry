@@ -18,9 +18,19 @@ interface ShareRow {
   last_viewed_at: string | null;
 }
 
+interface RateLimitRow {
+  window_start: number;
+  request_count: number;
+}
+
 const MAX_CIPHERTEXT_BYTES = 256 * 1024;
 const MAX_CIPHERTEXT_B64 = Math.floor(MAX_CIPHERTEXT_BYTES * 4 / 3) + 4;
 const MAX_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const RATE_LIMIT_REQUESTS = 60;
+const RATE_LIMIT_CREATE_REQUESTS = 10;
+const EXPIRED_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const REVOKED_RETENTION_MS = 24 * 60 * 60 * 1000;
 const SHARE_ID_RE = /^[A-Za-z0-9_-]{20,64}$/;
 const BASE64URL_RE = /^[A-Za-z0-9_-]+$/;
 
@@ -37,6 +47,18 @@ function json(body: unknown, status = 200): Response {
 
 function errorResponse(status: number, message: string): Response {
   return json({ error: message }, status);
+}
+
+function rateLimitedResponse(): Response {
+  return new Response(JSON.stringify({ error: "rate limit exceeded" }), {
+    status: 429,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+      "Retry-After": "60",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
 }
 
 function isoDate(value: Date): string {
@@ -69,6 +91,31 @@ function validBase64URL(value: unknown, maxLength = MAX_CIPHERTEXT_B64, exactLen
 async function sha256Hex(value: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function consumeRateLimit(request: Request, env: Env, scope: string, maxRequests: number): Promise<boolean> {
+  const client = request.headers.get("CF-Connecting-IP") || "anonymous";
+  const key = await sha256Hex(`password-entry:${scope}:${client}`);
+  const windowStart = Math.floor(Date.now() / RATE_LIMIT_WINDOW_MS) * RATE_LIMIT_WINDOW_MS;
+  const row = await env.DB.prepare("SELECT window_start, request_count FROM rate_limits WHERE key = ?").bind(key).first<RateLimitRow>();
+  if (!row || row.window_start !== windowStart) {
+    await env.DB.prepare("INSERT INTO rate_limits (key, window_start, request_count) VALUES (?, ?, 1) ON CONFLICT(key) DO UPDATE SET window_start = excluded.window_start, request_count = 1").bind(key, windowStart).run();
+    return true;
+  }
+  if (row.request_count >= maxRequests) return false;
+  await env.DB.prepare("UPDATE rate_limits SET request_count = request_count + 1 WHERE key = ? AND window_start = ?").bind(key, windowStart).run();
+  return true;
+}
+
+async function cleanupStorage(env: Env): Promise<void> {
+  const now = Date.now();
+  const expiredCutoff = isoDate(new Date(now - EXPIRED_RETENTION_MS));
+  const revokedCutoff = isoDate(new Date(now - REVOKED_RETENTION_MS));
+  const oldWindow = Math.floor((now - RATE_LIMIT_WINDOW_MS * 2) / RATE_LIMIT_WINDOW_MS) * RATE_LIMIT_WINDOW_MS;
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM shares WHERE expires_at < ? OR (revoked_at IS NOT NULL AND revoked_at < ?)").bind(expiredCutoff, revokedCutoff),
+    env.DB.prepare("DELETE FROM rate_limits WHERE window_start < ?").bind(oldWindow),
+  ]);
 }
 
 function sharePageRequest(request: Request): Request {
@@ -164,6 +211,10 @@ async function api(request: Request, env: Env): Promise<Response> {
       },
     });
   }
+  const scope = request.method === "POST" ? "create" : "api";
+  const limit = request.method === "POST" ? RATE_LIMIT_CREATE_REQUESTS : RATE_LIMIT_REQUESTS;
+  if (!(await consumeRateLimit(request, env, scope, limit))) return rateLimitedResponse();
+  await cleanupStorage(env);
   if (request.method === "POST" && url.pathname === "/v1/shares") return createShare(request, env);
   const match = url.pathname.match(/^\/v1\/shares\/([A-Za-z0-9_-]+)$/);
   if (!match) return errorResponse(404, "not found");
@@ -178,5 +229,8 @@ export default {
     if (url.pathname.startsWith("/v1/")) return api(request, env);
     if (url.pathname.match(/^\/s\/[A-Za-z0-9_-]{20,64}$/)) return env.ASSETS.fetch(sharePageRequest(request));
     return env.ASSETS.fetch(request);
+  },
+  async scheduled(_controller: ScheduledController, env: Env): Promise<void> {
+    await cleanupStorage(env);
   },
 };

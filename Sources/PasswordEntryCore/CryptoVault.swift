@@ -4,6 +4,7 @@ import CommonCrypto
 
 public enum VaultError: LocalizedError, Sendable {
     case invalidPassword
+    case weakPassword
     case invalidFile
     case keychain(OSStatus)
     case locked
@@ -14,6 +15,7 @@ public enum VaultError: LocalizedError, Sendable {
     public var errorDescription: String? {
         switch self {
         case .invalidPassword: return "主密码错误或保险库已损坏"
+        case .weakPassword: return "主密码至少需要 12 个字符"
         case .invalidFile: return "保险库文件格式无效"
         case .keychain(let status): return "无法读取 macOS 钥匙串（\(status)）；旧版本保险库迁移时只需在系统提示中允许一次"
         case .locked: return "桌面端已锁定"
@@ -60,6 +62,7 @@ public final class VaultStore: @unchecked Sendable {
             if record.version <= 1 { legacySecret = try deviceSecretOverride ?? KeychainStore.deviceSecret() } else { legacySecret = nil }
             let derived = deriveKey(password: password, deviceSecret: legacySecret, salt: salt)
             try activate(derived, record: record, salt: salt)
+            let migratedOrigins = migrateOriginsIfNeeded()
             encryptionVersion = record.version
             if record.version <= 1 {
                 // Migrate legacy vaults away from the ordinary login-keychain device secret.
@@ -67,8 +70,11 @@ public final class VaultStore: @unchecked Sendable {
                 lock.withLock { key = migrated }
                 encryptionVersion = 2
                 try save()
+            } else if migratedOrigins {
+                try save()
             }
         } else {
+            guard password.count >= 12 else { throw VaultError.weakPassword }
             let derived = deriveKey(password: password, deviceSecret: nil, salt: salt)
             lock.withLock { key = derived; vault = Vault(); self.salt = salt }
             encryptionVersion = 2
@@ -83,6 +89,7 @@ public final class VaultStore: @unchecked Sendable {
         guard data.count == 32 else { throw VaultError.invalidFile }
         try activate(SymmetricKey(data: data), record: record, salt: Data(base64Encoded: record.salt) ?? Data())
         encryptionVersion = record.version
+        if migrateOriginsIfNeeded() { try save() }
     }
 
     public func enableBiometricUnlock() throws {
@@ -113,10 +120,15 @@ public final class VaultStore: @unchecked Sendable {
         try save()
     }
 
-    public func upsertLogin(name: String, domain: String, username: String, password: String, faviconData: Data? = nil, faviconMimeType: String? = nil) throws {
+    public func upsertLogin(name: String, domain: String, origin: String? = nil, username: String, password: String, faviconData: Data? = nil, faviconMimeType: String? = nil) throws {
         let normalizedDomain = LoginEntry.normalizeDomain(domain) ?? domain.lowercased()
+        let normalizedOrigin = origin.flatMap(LoginEntry.normalizeOrigin) ?? LoginEntry.normalizeOrigin(domain)
         var current = try requireVault()
-        if let index = current.entries.firstIndex(where: { $0.username == username && $0.domains.contains(normalizedDomain) }) {
+        if let index = current.entries.firstIndex(where: {
+            guard $0.username == username else { return false }
+            if let normalizedOrigin, !$0.origins.isEmpty { return $0.origins.contains(normalizedOrigin) }
+            return $0.domains.contains(normalizedDomain)
+        }) {
             var entry = current.entries[index]
             entry.name = name.isEmpty ? entry.name : name
             entry.password = password
@@ -124,10 +136,11 @@ public final class VaultStore: @unchecked Sendable {
                 entry.faviconData = faviconData
                 entry.faviconMimeType = faviconMimeType
             }
+            if let normalizedOrigin, !entry.origins.contains(normalizedOrigin) { entry.origins.append(normalizedOrigin) }
             entry.updatedAt = .now
             current.entries[index] = entry
         } else {
-            current.entries.append(LoginEntry(name: name.isEmpty ? normalizedDomain : name, domains: [normalizedDomain], username: username, password: password, faviconData: faviconData, faviconMimeType: faviconMimeType))
+            current.entries.append(LoginEntry(name: name.isEmpty ? normalizedDomain : name, domains: [normalizedDomain], origins: normalizedOrigin.map { [$0] }, username: username, password: password, faviconData: faviconData, faviconMimeType: faviconMimeType))
         }
         lock.withLock { vault = current }
         try save()
@@ -167,11 +180,30 @@ public final class VaultStore: @unchecked Sendable {
 
     public func matches(urlString: String) throws -> [LoginEntry] {
         let host = URL(string: urlString)?.host?.lowercased() ?? ""
-        return try requireVault().entries.filter { item in item.domains.contains { host == $0 || host.hasSuffix(".\($0)") } }
+        let origin = LoginEntry.normalizeOrigin(urlString)
+        guard !host.isEmpty, let origin else { return [] }
+        return try requireVault().entries.filter { item in
+            if !item.origins.isEmpty { return item.origins.contains(origin) }
+            return item.domains.contains(host)
+        }
     }
 
     private func requireVault() throws -> Vault {
         try lock.withLock { guard let vault else { throw VaultError.locked }; return vault }
+    }
+
+    @discardableResult
+    private func migrateOriginsIfNeeded() -> Bool {
+        lock.withLock {
+            guard var current = vault else { return false }
+            var changed = false
+            for index in current.entries.indices where current.entries[index].origins.isEmpty {
+                current.entries[index].origins = current.entries[index].domains.compactMap(LoginEntry.normalizeOrigin)
+                changed = true
+            }
+            if changed { vault = current }
+            return changed
+        }
     }
 
     private func loadRecord() throws -> EncryptedVault {

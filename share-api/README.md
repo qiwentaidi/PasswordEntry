@@ -37,7 +37,7 @@ npm run deploy:self
 2. Looks for a D1 database named `password-entry-share` in the logged-in Cloudflare account.
 3. Creates it in the Asia-Pacific region if it does not exist.
 4. Writes that account's database ID and database name into the local `wrangler.jsonc`.
-5. Applies `migrations/0001_create_shares.sql` to the remote database.
+5. Applies the share and rate-limit migrations to the remote database.
 6. Runs the TypeScript check and deploys the Worker.
 
 To choose a different database name or primary location:
@@ -99,4 +99,4 @@ Use `npm run deploy:self` for first-time provisioning. Use `npm run deploy` for 
 
 `server.py` remains available for offline local testing, but it is not the production deployment. The Cloudflare implementation is in `src/worker.ts`; the recipient page is deployed from `public/share.html`.
 
-The service intentionally does not include accounts, email verification, attachments, or one-time links yet. Add rate limiting and abuse controls before opening anonymous creation to the public internet.
+The service intentionally does not include accounts, email verification, attachments, or one-time links yet. Share creation is limited to 10 requests per client per minute, other API calls to 60 requests per client per minute, and a scheduled cleanup removes old expired or revoked rows.

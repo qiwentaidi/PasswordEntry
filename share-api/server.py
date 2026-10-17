@@ -13,6 +13,8 @@ import json
 import os
 import re
 import sqlite3
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -27,8 +29,15 @@ PORT = int(os.environ.get("PASSWORD_ENTRY_SHARE_PORT", "8787"))
 MAX_CIPHERTEXT_BYTES = 256 * 1024
 MAX_CIPHERTEXT_B64 = MAX_CIPHERTEXT_BYTES * 4 // 3 + 4
 MAX_LIFETIME_SECONDS = 30 * 24 * 60 * 60
+RATE_LIMIT_WINDOW_SECONDS = 60
+RATE_LIMIT_REQUESTS = 60
+RATE_LIMIT_CREATE_REQUESTS = 10
+EXPIRED_RETENTION_SECONDS = 7 * 24 * 60 * 60
+REVOKED_RETENTION_SECONDS = 24 * 60 * 60
 SHARE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{20,64}$")
 BASE64URL_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+RATE_LIMIT_LOCK = threading.Lock()
+RATE_LIMIT_WINDOWS: dict[tuple[str, str], tuple[int, int]] = {}
 
 
 def utc_now() -> datetime:
@@ -66,6 +75,21 @@ def connect() -> sqlite3.Connection:
     return connection
 
 
+def cleanup_storage() -> None:
+    now = utc_now()
+    expired_cutoff = iso(now - timedelta(seconds=EXPIRED_RETENTION_SECONDS))
+    revoked_cutoff = iso(now - timedelta(seconds=REVOKED_RETENTION_SECONDS))
+    connection = connect()
+    try:
+        connection.execute(
+            "DELETE FROM shares WHERE expires_at < ? OR (revoked_at IS NOT NULL AND revoked_at < ?)",
+            (expired_cutoff, revoked_cutoff),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
 class ShareHandler(BaseHTTPRequestHandler):
     server_version = "PasswordEntryShare/1.0"
 
@@ -83,6 +107,36 @@ class ShareHandler(BaseHTTPRequestHandler):
         self.end_headers()
         if payload:
             self.wfile.write(payload)
+
+    def rate_limit(self, scope: str, maximum: int) -> bool:
+        client = self.client_address[0] if self.client_address else "unknown"
+        now = int(time.time())
+        window = now // RATE_LIMIT_WINDOW_SECONDS
+        key = (scope, client)
+        with RATE_LIMIT_LOCK:
+            stale = [item for item, value in RATE_LIMIT_WINDOWS.items() if value[0] < window - 1]
+            for item in stale:
+                RATE_LIMIT_WINDOWS.pop(item, None)
+            previous = RATE_LIMIT_WINDOWS.get(key)
+            if previous is None or previous[0] != window:
+                RATE_LIMIT_WINDOWS[key] = (window, 1)
+                return True
+            if previous[1] >= maximum:
+                return False
+            RATE_LIMIT_WINDOWS[key] = (window, previous[1] + 1)
+            return True
+
+    def reject_if_rate_limited(self, scope: str, maximum: int) -> bool:
+        if self.rate_limit(scope, maximum):
+            return False
+        self.send_response(HTTPStatus.TOO_MANY_REQUESTS)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Retry-After", "60")
+        self.send_header("Content-Length", "31")
+        self.end_headers()
+        self.wfile.write(b'{"error":"rate limit exceeded"}')
+        return True
 
     def send_share_page(self) -> None:
         payload = (ROOT / "share.html").read_bytes()
@@ -115,6 +169,9 @@ class ShareHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self) -> None:
+        if self.reject_if_rate_limited("create", RATE_LIMIT_CREATE_REQUESTS):
+            return
+        cleanup_storage()
         if urlparse(self.path).path != "/v1/shares":
             self.send_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
             return
@@ -163,6 +220,9 @@ class ShareHandler(BaseHTTPRequestHandler):
         self.send_json(HTTPStatus.CREATED, {"shareId": share_id, "expiresAt": iso(expires_at)})
 
     def do_GET(self) -> None:
+        if self.reject_if_rate_limited("api", RATE_LIMIT_REQUESTS):
+            return
+        cleanup_storage()
         if re.fullmatch(r"/s/[A-Za-z0-9_-]{20,64}", urlparse(self.path).path):
             self.send_share_page()
             return
@@ -197,6 +257,9 @@ class ShareHandler(BaseHTTPRequestHandler):
             connection.close()
 
     def do_DELETE(self) -> None:
+        if self.reject_if_rate_limited("api", RATE_LIMIT_REQUESTS):
+            return
+        cleanup_storage()
         match = re.fullmatch(r"/v1/shares/([A-Za-z0-9_-]+)", urlparse(self.path).path)
         if not match:
             self.send_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
