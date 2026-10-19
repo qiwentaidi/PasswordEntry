@@ -1,20 +1,35 @@
-function visibleInputs() {
-  return [...document.querySelectorAll("input")].filter((input) => { const style = getComputedStyle(input); return style.display !== "none" && style.visibility !== "hidden" && !input.disabled; });
+function visibleInputs(root = document) {
+  return [...root.querySelectorAll("input")].filter((input) => { const style = getComputedStyle(input); return style.display !== "none" && style.visibility !== "hidden" && input.getClientRects().length > 0 && !input.disabled; });
 }
-function findFields() {
-  const inputs = visibleInputs();
+function inputHint(input) {
+  return `${input.name} ${input.id} ${input.autocomplete} ${input.placeholder}`;
+}
+function isOtpInput(input) {
+  return input.type !== "password" && (input.autocomplete === "one-time-code" || /otp|totp|2fa|mfa|auth|verification|security|code|token|安全码|验证码|动态密码|一次性/i.test(inputHint(input)));
+}
+function isUsernameInput(input) {
+  return input.type !== "password" && !isOtpInput(input) && (input.type === "email" || input.autocomplete === "username" || input.autocomplete === "email" || input.autocomplete === "tel" || /user|email|login|account|phone|mobile|tel|手机号|手机|账号|账户|用户名|邮箱/i.test(inputHint(input)));
+}
+function findFields(root = document) {
+  const inputs = visibleInputs(root);
   const passwordInputs = inputs.filter((input) => input.type === "password");
   const password = passwordInputs[0];
-  const username = inputs.find((input) => /user|email|login|account/i.test(`${input.name} ${input.id} ${input.autocomplete}`) && input.type !== "password") || inputs.find((input) => input.type === "email" || input.type === "text");
-  const otp = inputs.find((input) => input.autocomplete === "one-time-code" || /otp|totp|2fa|mfa|auth|verification|security|code|token|安全码|验证码|动态密码|一次性/i.test(`${input.name} ${input.id} ${input.autocomplete} ${input.placeholder}`) && input.type !== "password");
+  const passwordScope = password?.closest("form,[role=dialog],[aria-modal=true]");
+  const scopedInputs = passwordScope ? visibleInputs(passwordScope) : inputs;
+  const username = scopedInputs.find(isUsernameInput) || scopedInputs.find((input) => input.type === "email" || input.type === "text") || inputs.find(isUsernameInput) || inputs.find((input) => input.type === "email" || input.type === "text");
+  const otp = inputs.find(isOtpInput);
   return {username, password, passwordCount: passwordInputs.length, otp};
 }
 function isLoginLikePage(fields) {
   if (fields.otp) return true;
   if (!fields.username && (!fields.password || fields.passwordCount !== 1)) return false;
-  const hints = `${document.title} ${location.pathname} ${[...document.querySelectorAll("form, input, button")].slice(0, 80).map((element) => `${element.getAttribute("name") || ""} ${element.getAttribute("id") || ""} ${element.getAttribute("placeholder") || ""} ${element.textContent || ""}`).join(" ")}`;
-  if (/settings|setting|profile|change-password|password-reset|账户设置|安全设置|修改密码|重置密码/i.test(hints)) return false;
-  return /login|signin|sign-in|auth|用户名|登录|登陆|密码/i.test(hints);
+  const elements = [...document.querySelectorAll("form, input, button")].slice(0, 80);
+  const structuralHints = `${document.title} ${location.pathname} ${location.hash} ${elements.map((element) => `${element.getAttribute("name") || ""} ${element.getAttribute("id") || ""} ${element.getAttribute("placeholder") || ""} ${element.getAttribute("autocomplete") || ""} ${element.getAttribute("type") || ""}`).join(" ")}`;
+  const buttonText = elements.filter((element) => element.matches("button, input[type=submit], [role=button]")).map((element) => element.textContent || element.value || "").join(" ");
+  const loginMarker = /login|signin|sign-in|auth|用户名|登录|登陆/i.test(`${structuralHints} ${buttonText}`);
+  const blockedMarker = /settings|setting|profile|change-password|password-reset|账户设置|安全设置|修改密码|重置密码/i.test(structuralHints);
+  if (blockedMarker && !loginMarker) return false;
+  return loginMarker || /密码|password/i.test(structuralHints);
 }
 function setValue(input, value) {
   if (!input) return false;
@@ -124,19 +139,64 @@ async function showSavePrompt(username, password) {
     savePromptPending = false;
   }
 }
-function maybeSaveCurrentForm(form) {
-  const fields = findFields();
-  const scoped = form instanceof HTMLFormElement ? [...form.querySelectorAll("input")].filter((input) => input.offsetParent !== null) : [];
-  const password = scoped.find((input) => input.type === "password") || fields.password;
-  const username = scoped.find((input) => input !== password && (/user|email|login|account/i.test(`${input.name} ${input.id} ${input.autocomplete}`) || input.type === "email")) || fields.username;
-  showSavePrompt(username?.value || "", password?.value || "").catch(() => {});
+function isVisibleElement(element) {
+  const style = getComputedStyle(element);
+  return style.display !== "none" && style.visibility !== "hidden" && !element.disabled;
 }
-document.addEventListener("submit", (event) => maybeSaveCurrentForm(event.target), true);
-document.addEventListener("click", (event) => {
-  const button = event.target instanceof Element ? event.target.closest("button, input[type=submit], [role=button]") : null;
-  if (!button) return;
-  const form = button.closest("form");
-  if (form) setTimeout(() => maybeSaveCurrentForm(form), 0);
+function submitButtonText(element) {
+  return (element.innerText || element.value || element.textContent || "").trim();
+}
+function isSubmitControl(element) {
+  if (!isVisibleElement(element)) return false;
+  if (element.matches("input[type=submit],button[type=submit]")) return true;
+  return /login|log in|sign in|submit|continue|next|登录|登陆|提交|继续|下一步/i.test(submitButtonText(element));
+}
+function nearestLoginScope(password) {
+  const explicitScope = password.closest("form,[role=dialog],[aria-modal=true]");
+  if (explicitScope) return explicitScope;
+  let scope = password.parentElement;
+  for (let depth = 0; scope && depth < 8; depth += 1, scope = scope.parentElement) {
+    const inputs = visibleInputs(scope);
+    if (inputs.some((input) => input !== password && isUsernameInput(input)) && [...scope.querySelectorAll("button,input[type=submit],[role=button]")].some(isSubmitControl)) return scope;
+  }
+  return password.parentElement || document;
+}
+function loginCandidates(root = document) {
+  return visibleInputs(root).filter((input) => input.type === "password").map((password) => {
+    const scope = nearestLoginScope(password);
+    const fields = findFields(scope);
+    const scoped = visibleInputs(scope);
+    const username = scoped.find((input) => input !== password && isUsernameInput(input)) || fields.username;
+    const controls = [...scope.querySelectorAll("button,input[type=submit],[role=button]")].filter(isSubmitControl);
+    return {scope, username, password, controls};
+  });
+}
+function captureLoginCandidate(candidate) {
+  const username = candidate.username?.value || "";
+  const password = candidate.password?.value || "";
+  if (!username || !password || !isLoginLikePage({username, password, passwordCount: 1, otp: undefined})) return;
+  // Read values before the site's click handler can rerender or navigate away.
+  setTimeout(() => showSavePrompt(username, password).catch(() => {}), 0);
+}
+const registeredSubmitControls = new WeakSet();
+function registerLoginCandidates() {
+  for (const candidate of loginCandidates()) {
+    for (const control of candidate.controls) {
+      if (registeredSubmitControls.has(control)) continue;
+      registeredSubmitControls.add(control);
+      const handler = (event) => {
+        if (event.type !== "submit" && event.isTrusted === false) return;
+        captureLoginCandidate(candidate);
+      };
+      control.addEventListener("click", handler, true);
+      control.addEventListener("keyup", (event) => { if (["Enter", "Space"].includes(event.code)) handler(event); }, true);
+    }
+  }
+}
+document.addEventListener("submit", (event) => {
+  const form = event.target instanceof HTMLFormElement ? event.target : null;
+  const candidate = form && loginCandidates(form)[0];
+  if (candidate) captureLoginCandidate(candidate);
 }, true);
 let pendingFillInProgress = false;
 async function fillPendingTotp() {
@@ -178,6 +238,26 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   return true;
 });
 let lastLocation = location.href;
-const refreshPrompt = async () => { if (Date.now() < suppressFillPromptUntil) return; if (location.href !== lastLocation) { lastLocation = location.href; } if (await fillPendingTotp()) return; showFillPrompt().catch(() => {}); };
-setTimeout(refreshPrompt, 700);
-new MutationObserver(() => { if (!document.getElementById("password-entry-fill-prompt")) refreshPrompt(); }).observe(document.documentElement, {subtree: true, childList: true});
+let refreshInFlight = false;
+const refreshPrompt = async () => {
+  if (refreshInFlight || Date.now() < suppressFillPromptUntil) return;
+  refreshInFlight = true;
+  try {
+    if (location.href !== lastLocation) lastLocation = location.href;
+    if (await fillPendingTotp()) return;
+    await showFillPrompt();
+  } catch { /* page navigation or an unavailable native host can interrupt a refresh */ }
+  finally { refreshInFlight = false; }
+};
+let registryRefreshTimer;
+function scheduleLoginRegistryRefresh() {
+  clearTimeout(registryRefreshTimer);
+  registryRefreshTimer = setTimeout(registerLoginCandidates, 80);
+}
+setTimeout(() => { registerLoginCandidates(); refreshPrompt(); }, 700);
+setInterval(() => { if (!document.getElementById("password-entry-fill-prompt")) refreshPrompt(); }, 1500);
+window.addEventListener("focus", () => refreshPrompt());
+new MutationObserver(() => {
+  scheduleLoginRegistryRefresh();
+  if (!document.getElementById("password-entry-fill-prompt")) refreshPrompt();
+}).observe(document.documentElement, {subtree: true, childList: true});

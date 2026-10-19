@@ -124,11 +124,15 @@ public final class VaultStore: @unchecked Sendable {
         let normalizedDomain = LoginEntry.normalizeDomain(domain) ?? domain.lowercased()
         let normalizedOrigin = origin.flatMap(LoginEntry.normalizeOrigin) ?? LoginEntry.normalizeOrigin(domain)
         var current = try requireVault()
-        if let index = current.entries.firstIndex(where: {
+        let exactIndex = current.entries.firstIndex(where: {
             guard $0.username == username else { return false }
-            if let normalizedOrigin, !$0.origins.isEmpty { return $0.origins.contains(normalizedOrigin) }
-            return $0.domains.contains(normalizedDomain)
-        }) {
+            guard let normalizedOrigin else { return false }
+            return $0.origins.contains(normalizedOrigin)
+        })
+        let fallbackIndex = exactIndex == nil ? current.entries.firstIndex(where: {
+            $0.username == username && $0.domains.contains(normalizedDomain)
+        }) : nil
+        if let index = exactIndex ?? fallbackIndex {
             var entry = current.entries[index]
             entry.name = name.isEmpty ? entry.name : name
             entry.password = password
@@ -182,10 +186,12 @@ public final class VaultStore: @unchecked Sendable {
         let host = URL(string: urlString)?.host?.lowercased() ?? ""
         let origin = LoginEntry.normalizeOrigin(urlString)
         guard !host.isEmpty, let origin else { return [] }
-        return try requireVault().entries.filter { item in
-            if !item.origins.isEmpty { return item.origins.contains(origin) }
-            return item.domains.contains(host)
-        }
+        let entries = try requireVault().entries
+        let exactMatches = entries.filter { $0.origins.contains(origin) }
+        if !exactMatches.isEmpty { return exactMatches }
+        // Keep older/domain-only entries usable when the current page changes scheme or port
+        // (for example, a local app moving from https://host:443 to http://host:3000).
+        return entries.filter { $0.domains.contains(host) }
     }
 
     private func requireVault() throws -> Vault {

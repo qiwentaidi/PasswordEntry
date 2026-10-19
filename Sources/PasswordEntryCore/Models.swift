@@ -46,6 +46,10 @@ public struct LoginEntry: Codable, Identifiable, Equatable, Sendable {
     public var createdAt: Date
     public var updatedAt: Date
 
+    /// User-facing site addresses. Keep host-only domains for legacy matching, but show
+    /// canonical origins whenever they are available so ports and schemes are visible.
+    public var siteAddresses: [String] { origins.isEmpty ? domains : origins }
+
     public init(id: UUID = UUID(), name: String, domains: [String], origins: [String]? = nil, username: String, password: String, totp: TotpConfig? = nil, faviconData: Data? = nil, faviconMimeType: String? = nil, createdAt: Date = .now, updatedAt: Date = .now) {
         self.id = id
         self.name = name
@@ -204,6 +208,7 @@ public struct MatchedEntry: Codable, Equatable, Sendable {
     public let username: String
     public let hasTotp: Bool
     public let domains: [String]
+    public let origins: [String]
     public let faviconData: Data?
     public let faviconMimeType: String?
 
@@ -213,6 +218,7 @@ public struct MatchedEntry: Codable, Equatable, Sendable {
         username = entry.username
         hasTotp = entry.totp != nil
         domains = entry.domains
+        origins = entry.origins
         faviconData = entry.faviconData
         faviconMimeType = entry.faviconMimeType
     }

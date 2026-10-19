@@ -25,7 +25,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       case "PAGE_HINT": {
         try {
           const state = await nativeRequest({action: "list_matches", url: message.url});
-          const entries = (state.entries || []).map(({id, name, username, hasTotp, domains}) => ({id, name, username, hasTotp, domains}));
+          const entries = (state.entries || []).map(({id, name, username, hasTotp, domains, origins}) => ({id, name, username, hasTotp, domains, origins}));
           sendResponse({ok: true, available: Boolean(entries.length), entries});
         }
         catch { sendResponse({ok: true, available: false, entries: []}); }

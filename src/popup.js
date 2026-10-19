@@ -55,7 +55,7 @@ function renderEntry(entry) {
     : entry.hasTotp && pageContext.hasOtp
       ? '<button data-action="totp">Touch ID 填验证码</button>'
       : `<button data-action="login">填充登录</button>${entry.hasTotp ? '<button data-action="totp">Touch ID 填验证码</button>' : ""}`;
-  card.innerHTML = `<div class="entry-heading"><div class="entry-icon"></div><div><div class="entry-title"></div><div class="entry-user"></div></div></div><div class="actions">${actionMarkup}</div>`;
+  card.innerHTML = `<div class="entry-heading"><div class="entry-icon"></div><div><div class="entry-title"></div><div class="entry-site"></div><div class="entry-user"></div></div></div><div class="actions">${actionMarkup}</div>`;
 
   const icon = card.querySelector(".entry-icon");
   if (entry.faviconData) {
@@ -67,6 +67,7 @@ function renderEntry(entry) {
     icon.textContent = "◉";
   }
   card.querySelector(".entry-title").textContent = entry.name;
+  card.querySelector(".entry-site").textContent = (entry.origins?.length ? entry.origins : entry.domains || []).join(", ");
   card.querySelector(".entry-user").textContent = entry.username;
   card.querySelectorAll("button").forEach((button) => button.addEventListener("click", async () => {
     try {

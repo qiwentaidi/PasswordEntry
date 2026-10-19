@@ -180,7 +180,7 @@ struct VaultView: View {
     @State private var search = ""
     @State private var editorMode: EntryEditorMode?
 
-    var filtered: [LoginEntry] { model.entries.filter { search.isEmpty || "\($0.name) \($0.username) \($0.domains.joined(separator: " "))".localizedCaseInsensitiveContains(search) } }
+    var filtered: [LoginEntry] { model.entries.filter { search.isEmpty || "\($0.name) \($0.username) \($0.siteAddresses.joined(separator: " "))".localizedCaseInsensitiveContains(search) } }
 
     var body: some View {
         NavigationSplitView {
@@ -189,7 +189,7 @@ struct VaultView: View {
                     FaviconView(data: entry.faviconData, size: 28)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(entry.name).font(.headline)
-                        Text(entry.domains.joined(separator: ", ")).font(.caption).foregroundStyle(.secondary)
+                        Text(entry.siteAddresses.joined(separator: ", ")).font(.caption).foregroundStyle(.secondary)
                     }
                 }.tag(entry.id)
             }.searchable(text: $search, prompt: "搜索保险库").toolbar {
@@ -270,7 +270,7 @@ struct EntryDetail: View {
                     FaviconView(data: entry.faviconData, size: 40)
                     VStack(alignment: .leading, spacing: 4) {
                         Text(entry.name).font(.title2.bold())
-                        Text(entry.domains.joined(separator: ", ")).foregroundStyle(.secondary)
+                        Text(entry.siteAddresses.joined(separator: ", ")).foregroundStyle(.secondary)
                     }
                     Spacer()
                     Button("分享", systemImage: "square.and.arrow.up") { showShare = true }
@@ -481,14 +481,14 @@ struct EntryEditor: View {
 
     init(entry: LoginEntry?, model: DesktopModel) {
         original = entry; self.model = model
-        _name = State(initialValue: entry?.name ?? ""); _domain = State(initialValue: entry?.domains.first ?? ""); _username = State(initialValue: entry?.username ?? ""); _password = State(initialValue: entry?.password ?? ""); _totpSecret = State(initialValue: entry?.totp?.secret ?? "")
+        _name = State(initialValue: entry?.name ?? ""); _domain = State(initialValue: entry?.siteAddresses.first ?? ""); _username = State(initialValue: entry?.username ?? ""); _password = State(initialValue: entry?.password ?? ""); _totpSecret = State(initialValue: entry?.totp?.secret ?? "")
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(original == nil ? "新增登录项" : "编辑登录项").font(.title2.bold())
             TextField("名称", text: $name).textFieldStyle(.roundedBorder)
-            TextField("网站，例如 github.com", text: $domain).textFieldStyle(.roundedBorder)
+            TextField("网站地址，例如 https://github.com:443", text: $domain).textFieldStyle(.roundedBorder)
             TextField("用户名", text: $username).textFieldStyle(.roundedBorder)
             SecureField("密码", text: $password).textFieldStyle(.roundedBorder)
             TextField("TOTP 密钥或 otpauth:// 链接（可选）", text: $totpSecret).textFieldStyle(.roundedBorder)
@@ -504,11 +504,14 @@ struct EntryEditor: View {
         else if let originalTotp = original?.totp, totpSecret == originalTotp.secret { config = originalTotp }
         else if totpSecret.lowercased().hasPrefix("otpauth://") { config = try? TotpConfig(otpauthURI: totpSecret) }
         else { config = TotpConfig(secret: totpSecret) }
-        let preservedOrigins = original.flatMap { entry -> [String]? in
-            guard let normalized = LoginEntry.normalizeDomain(domain), entry.domains.contains(normalized) else { return nil }
+        let normalizedDomain = LoginEntry.normalizeDomain(domain)
+        let normalizedOrigin = LoginEntry.normalizeOrigin(domain)
+        let origins = original.flatMap { entry -> [String]? in
+            guard let normalizedDomain, entry.domains.contains(normalizedDomain),
+                  let normalizedOrigin, entry.origins.contains(normalizedOrigin) else { return nil }
             return entry.origins
-        }
-        model.save(LoginEntry(id: original?.id ?? UUID(), name: name, domains: [domain], origins: preservedOrigins, username: username, password: password, totp: config, faviconData: original?.faviconData, faviconMimeType: original?.faviconMimeType, createdAt: original?.createdAt ?? .now, updatedAt: .now))
+        } ?? normalizedOrigin.map { [$0] }
+        model.save(LoginEntry(id: original?.id ?? UUID(), name: name, domains: [domain], origins: origins, username: username, password: password, totp: config, faviconData: original?.faviconData, faviconMimeType: original?.faviconMimeType, createdAt: original?.createdAt ?? .now, updatedAt: .now))
         dismiss()
     }
 }
